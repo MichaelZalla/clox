@@ -15,12 +15,14 @@ typedef struct
 	int count;
 	int capacity;
 	uint8_t *code; // Cache-friendly, dense, dynamic byte array.
+	int *lines;
 	ValueArray constants;
 } Chunk;
 
-void initChunk(Chunk *chunk);								 // Initializes a new Chunk.
-void freeChunk(Chunk *chunk);								 // Deallocates a Chunk.
-void writeChunk(Chunk *chunk, uint8_t byte); // Appends a byte to the end of the Chunk.
-int addConstant(Chunk *chunk, Value value);	 // Appends a Value to `constants`.
+void initChunk(Chunk *chunk);													 // Initializes a new Chunk.
+void freeChunk(Chunk *chunk);													 // Deallocates a Chunk.
+void writeChunk(Chunk *chunk, uint8_t byte, int line); // Appends a (code) byte to `code`.
+
+int addConstant(Chunk *chunk, Value value); // Appends a Value to `constants`.
 
 #endif // !clox_chunk_h

@@ -10,10 +10,9 @@ int main(int argc, const char *argv[])
 
 	int constantIndex = addConstant(&chunk, 1.2);
 
-	writeChunk(&chunk, OP_CONSTANT);   // CONSTANT
-	writeChunk(&chunk, constantIndex); // 1.2
-
-	writeChunk(&chunk, OP_RETURN); // RETURN
+	writeChunk(&chunk, OP_CONSTANT, 123);	// CONSTANT
+	writeChunk(&chunk, constantIndex, 123); // 1.2
+	writeChunk(&chunk, OP_RETURN, 123);		// RETURN
 
 	disassembleChunk(&chunk, "test chunk");
 	freeChunk(&chunk);
