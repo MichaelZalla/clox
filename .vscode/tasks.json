@@ -9,6 +9,8 @@
                 "-O0",
                 "-fcolor-diagnostics",
                 "-g",
+                "src/memory.c",
+                "src/chunk.c",
                 "src/main.c",
                 "-o",
                 "${workspaceFolder}/build/debug/arm64-apple-darwin/main"
