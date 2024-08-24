@@ -1,4 +1,7 @@
 {
+	"files.associations": {
+		"*.h": "c"
+	},
 	"[c]": {
 		"editor.formatOnSave": true
 	},
@@ -9,6 +12,8 @@
 		"**/CVS": true,
 		"**/.DS_Store": true,
 		"**/Thumbs.db": true,
+	},
+	"search.exclude": {
 		"build/**": true,
 	}
 }
