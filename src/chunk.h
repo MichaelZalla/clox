@@ -7,6 +7,11 @@
 typedef enum
 {
 	OP_CONSTANT, // Load a constant (by index) for use.
+	OP_ADD,			 // Binary add.
+	OP_SUBTRACT, // Binary subtract.
+	OP_MULTIPLY, // Binary multiply.
+	OP_DIVIDE,	 // Binary divide.
+	OP_NEGATE,	 // Unary negate.
 	OP_RETURN,	 // Return from the current function.
 } OpCode;
 
