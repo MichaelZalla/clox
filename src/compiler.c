@@ -5,6 +5,7 @@
 #include "common.h"
 #include "compiler.h"
 #include "scanner.h"
+#include "value.h"
 
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
@@ -246,7 +247,7 @@ static void number()
 	// using `strtod()`.
 	double value = strtod(parser.previousToken.start, NULL);
 
-	emitConstant(value);
+	emitConstant(NUMBER_VAL(value));
 }
 
 static void unary()
