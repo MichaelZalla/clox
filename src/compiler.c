@@ -1,33 +1,17 @@
 #include <stdio.h>
 
+#include "chunk.h"
 #include "common.h"
 #include "compiler.h"
 #include "scanner.h"
 
-void compile(const char *source)
+bool compile(const char *source, Chunk *chunk)
 {
 	initScanner(source);
 
-	int line = -1;
+	advance();
 
-	for (;;)
-	{
-		Token token = scanToken();
+	expression();
 
-		if (token.line != line)
-		{
-			printf("%4d ", token.line);
-			line = token.line;
-		}
-		else
-		{
-			printf("   | ");
-		}
-
-		// Prints `token.length` worth of characters from `source`.
-		printf("%2d '%.*s'\n", token.type, token.length, token.start);
-
-		if (token.type == TOKEN_EOF)
-			break;
-	}
+	consume(TOKEN_EOF, "Expect end of expression.");
 }
