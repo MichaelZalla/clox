@@ -161,6 +161,53 @@ static void endCompiler()
 static void expression();
 static void parsePrecedence(Precedence precedence);
 
+static void binary()
+{
+	// Assumes that we've already consumed the tokens for the entire left-hand
+	// operand (expression), as well as the token for the (infix) binary operator,
+	// and that we have that stored in `previousToken`.
+	TokenType operatorType = parser.previousToken.type;
+
+	ParseRule *rule = getRule(operatorType);
+
+	// Compiles the right operand (expression).
+
+	// Each binary operator's right-hand operand precedence is one level higher
+	// than its own; this is because the binary operators are left-associative:
+	//
+	// Here, there are no higher-precedence expressions to consume on the right...
+	//
+	// 1 + 2 + 3 + 4
+	// ((1 + 2) + 3) + 4
+	//
+	// ...but here, there are...
+	//
+	// 1 + 2 * 3 - 4
+	// (1 + (2 * 3)) - 4
+
+	parsePrecedence((Precedence)(rule->precedence + 1));
+
+	// Emits the bytecode instruction that performs the given binary operation.
+	switch (operatorType)
+	{
+	case TOKEN_PLUS:
+		emitByte(OP_ADD);
+		break;
+	case TOKEN_MINUS:
+		emitByte(OP_SUBTRACT);
+		break;
+	case TOKEN_STAR:
+		emitByte(OP_MULTIPLY);
+		break;
+	case TOKEN_SLASH:
+		emitByte(OP_DIVIDE);
+		break;
+	default:
+		// Unreachable.
+		return;
+	}
+}
+
 static void grouping()
 {
 	// Compiles the expression between the pair of parentheses.
