@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "chunk.h"
 #include "common.h"
@@ -14,6 +15,21 @@ typedef struct
 } Parser;
 
 Parser parser;
+
+typedef enum
+{
+	PREC_NONE,
+	PREC_ASSIGNMENT, // =
+	PREC_OR,				 // or
+	PREC_AND,				 // and
+	PREC_EQUALITY,	 // == !=
+	PREC_COMPARISON, // < <= > >=
+	PREC_TERM,			 // + -
+	PREC_FACTOR,		 // * /
+	PREC_UNARY,			 // - !
+	PREC_CALL,			 // . ()
+	PREC_PRIMARY
+} Precedence;
 
 Chunk *compilingChunk;
 
@@ -113,13 +129,90 @@ static void emitReturn()
 	emitByte(OP_RETURN);
 }
 
+static uint8_t makeConstant(Value value)
+{
+	Chunk *chunk = currentChunk();
+
+	int index = addConstant(chunk, value);
+
+	if (index > UINT8_MAX)
+	{
+		error("Too many constants in one chunk!");
+
+		return 0;
+	}
+
+	return (uint8_t)index;
+}
+
+static void emitConstant(Value value)
+{
+	uint8_t index = makeConstant(value);
+
+	emitBytes(OP_CONSTANT, index);
+}
+
 static void endCompiler()
 {
 	emitReturn();
 }
 
+// Forward declarations.
+static void expression();
+static void parsePrecedence(Precedence precedence);
+
+static void grouping()
+{
+	// Compiles the expression between the pair of parentheses.
+	expression();
+
+	// Consumes the closing parentheses.
+	consume(TOKEN_RIGHT_PAREN, "Expect ')' after grouping expression.");
+}
+
+static void number()
+{
+	// Assumes that we've already consumed the token for this number literal,
+	// and have stored it in `previousToken`; we convert the lexeme to a double
+	// using `strtod()`.
+	double value = strtod(parser.previousToken.start, NULL);
+
+	emitConstant(value);
+}
+
+static void unary()
+{
+	// Assumes that we've already consumed the token for the unary operator,
+	// and have it stored in `previousToken`.
+	TokenType operatorType = parser.previousToken.type;
+
+	// Compile the operand.
+
+	// Using `PREC_UNARY` precedence allows Lox users to nest unary expressions,
+	// (e.g., `!!someDoubleNegative`).
+	parsePrecedence(PREC_UNARY);
+
+	// Emit the operator instruction.
+	switch (operatorType)
+	{
+	case TOKEN_MINUS:
+		emitByte(OP_NEGATE);
+
+		break;
+	default:
+		// Unreachable.
+
+		return;
+	}
+}
+
+static void parsePrecedence(Precedence precedence)
+{
+}
+
 static void expression()
 {
+	parsePrecedence(PREC_ASSIGNMENT);
 }
 
 bool compile(const char *source, Chunk *chunk)
