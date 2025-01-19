@@ -15,6 +15,13 @@ typedef struct
 
 Parser parser;
 
+Chunk *compilingChunk;
+
+Chunk *currentChunk()
+{
+	return compilingChunk;
+}
+
 static void errorAt(Token *token, const char *message)
 {
 	if (parser.panicMode)
@@ -87,9 +94,39 @@ static void consume(TokenType type, const char *message)
 	errorAtCurrent(message);
 }
 
+static void emitByte(uint8_t byte)
+{
+	// Writes the given byte (which may be an opcode,or operand).
+	// Passing line information lets us associate a runtime error with a line.
+	writeChunk(currentChunk(), byte, parser.previousToken.line);
+}
+
+static void emitBytes(uint8_t byte1, uint8_t byte2)
+{
+	// Convenience function to write an opcode, followed by its operand.
+	emitByte(byte1);
+	emitByte(byte2);
+}
+
+static void emitReturn()
+{
+	emitByte(OP_RETURN);
+}
+
+static void endCompiler()
+{
+	emitReturn();
+}
+
+static void expression()
+{
+}
+
 bool compile(const char *source, Chunk *chunk)
 {
 	initScanner(source);
+
+	compilingChunk = chunk;
 
 	parser.hadError = false;
 	parser.panicMode = false;
@@ -99,6 +136,8 @@ bool compile(const char *source, Chunk *chunk)
 	expression();
 
 	consume(TOKEN_EOF, "Expect end of expression.");
+
+	endCompiler();
 
 	return !parser.hadError;
 }
