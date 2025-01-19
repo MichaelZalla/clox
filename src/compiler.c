@@ -31,6 +31,16 @@ typedef enum
 	PREC_PRIMARY
 } Precedence;
 
+typedef void (*ParseFn)();
+
+// Represents a single row in the parsing table.
+typedef struct
+{
+	ParseFn prefix;
+	ParseFn infix;
+	Precedence precedence;
+} ParseRule;
+
 Chunk *compilingChunk;
 
 Chunk *currentChunk()
@@ -159,6 +169,7 @@ static void endCompiler()
 
 // Forward declarations.
 static void expression();
+static ParseRule *getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 
 static void binary()
@@ -253,8 +264,97 @@ static void unary()
 	}
 }
 
+// Pratt parser table.
+ParseRule rules[] = {
+		[TOKEN_LEFT_PAREN] = {grouping, NULL, PREC_NONE},
+		[TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
+		[TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
+		[TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
+		[TOKEN_COMMA] = {NULL, NULL, PREC_NONE},
+		[TOKEN_DOT] = {NULL, NULL, PREC_NONE},
+
+		[TOKEN_MINUS] = {unary, binary, PREC_TERM},
+		[TOKEN_PLUS] = {NULL, binary, PREC_TERM},
+
+		[TOKEN_SEMICOLON] = {NULL, NULL, PREC_NONE},
+
+		[TOKEN_SLASH] = {NULL, binary, PREC_FACTOR},
+		[TOKEN_STAR] = {NULL, binary, PREC_FACTOR},
+
+		[TOKEN_BANG] = {NULL, NULL, PREC_NONE},
+		[TOKEN_BANG_EQUAL] = {NULL, NULL, PREC_NONE},
+		[TOKEN_EQUAL] = {NULL, NULL, PREC_NONE},
+		[TOKEN_EQUAL_EQUAL] = {NULL, NULL, PREC_NONE},
+		[TOKEN_GREATER] = {NULL, NULL, PREC_NONE},
+		[TOKEN_GREATER_EQUAL] = {NULL, NULL, PREC_NONE},
+		[TOKEN_LESS] = {NULL, NULL, PREC_NONE},
+		[TOKEN_LESS_EQUAL] = {NULL, NULL, PREC_NONE},
+
+		[TOKEN_IDENTIFIER] = {NULL, NULL, PREC_NONE},
+		[TOKEN_STRING] = {NULL, NULL, PREC_NONE},
+		[TOKEN_NUMBER] = {number, NULL, PREC_NONE},
+
+		[TOKEN_AND] = {NULL, NULL, PREC_NONE},
+		[TOKEN_CLASS] = {NULL, NULL, PREC_NONE},
+		[TOKEN_ELSE] = {NULL, NULL, PREC_NONE},
+		[TOKEN_FALSE] = {NULL, NULL, PREC_NONE},
+		[TOKEN_FOR] = {NULL, NULL, PREC_NONE},
+		[TOKEN_FUN] = {NULL, NULL, PREC_NONE},
+		[TOKEN_IF] = {NULL, NULL, PREC_NONE},
+		[TOKEN_NIL] = {NULL, NULL, PREC_NONE},
+		[TOKEN_OR] = {NULL, NULL, PREC_NONE},
+		[TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
+		[TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
+		[TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
+		[TOKEN_THIS] = {NULL, NULL, PREC_NONE},
+		[TOKEN_TRUE] = {NULL, NULL, PREC_NONE},
+		[TOKEN_VAR] = {NULL, NULL, PREC_NONE},
+		[TOKEN_WHILE] = {NULL, NULL, PREC_NONE},
+		[TOKEN_ERROR] = {NULL, NULL, PREC_NONE},
+		[TOKEN_EOF] = {NULL, NULL, PREC_NONE},
+};
+
 static void parsePrecedence(Precedence precedence)
 {
+	advance();
+
+	// Look up a prefix parser for the current token (the first token is always
+	// going to belong to a prefix expression, by definition of our grammar).
+
+	ParseRule *previousRule = getRule(parser.previousToken.type);
+
+	ParseFn prefixRuleFn = previousRule->prefix;
+
+	if (prefixRuleFn == NULL)
+	{
+		error("Expect expression.");
+
+		return;
+	}
+
+	// Compiles the rest of the prefix expression, consuming any other tokens it
+	// needs, and then returns back.
+	prefixRuleFn();
+
+	while (precedence <= getRule(parser.currentToken.type)->precedence)
+	{
+		// Look for an infix parser for the next token.
+
+		advance();
+
+		ParseRule *previousRule = getRule(parser.previousToken.type);
+
+		ParseFn infixRuleFn = previousRule->infix;
+
+		// Consume the infix operator and hand off control to the infix parsing
+		// function that we found.
+		infixRuleFn();
+	}
+}
+
+static ParseRule *getRule(TokenType type)
+{
+	return &rules[type];
 }
 
 static void expression()
