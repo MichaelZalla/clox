@@ -32,7 +32,9 @@ struct ObjString
 	char *chars;
 };
 
+ObjString *takeString(char *chars, int length);
 ObjString *copyString(const char *start, int length);
+void printObject(Value value);
 
 static inline bool isObjType(Value value, ObjType type)
 {

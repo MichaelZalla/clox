@@ -35,6 +35,11 @@ static ObjString *allocateString(char *chars, int length)
 	return string;
 }
 
+ObjString *takeString(char *chars, int length)
+{
+	return allocateString(chars, length);
+}
+
 ObjString *copyString(const char *chars, int length)
 {
 	// Make a heap allocation to store the string's bytes, plus a null terminator.
@@ -48,4 +53,14 @@ ObjString *copyString(const char *chars, int length)
 
 	// Create an ObjString* using the allocation.
 	return allocateString(heapChars, length);
+}
+
+void printObject(Value value)
+{
+	switch (OBJ_TYPE(value))
+	{
+	case OBJ_STRING:
+		printf("%s", AS_CSTRING(value));
+		break;
+	}
 }
