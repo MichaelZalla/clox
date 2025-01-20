@@ -12,6 +12,7 @@
                 "src/memory.c",
                 "src/chunk.c",
                 "src/value.c",
+                "src/object.c",
                 "src/compiler.c",
                 "src/scanner.c",
                 "src/vm.c",

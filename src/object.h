@@ -30,10 +30,11 @@ struct ObjString
 	Obj obj;
 	int length;
 	char *chars;
-}
+};
 
-static inline bool
-isObjType(Value value, ObjType type)
+ObjString *copyString(const char *start, int length);
+
+static inline bool isObjType(Value value, ObjType type)
 {
 	// Note: Were this function body just a macro, `value` would be evaluated
 	// twice—once for each occurrence in this function body.
