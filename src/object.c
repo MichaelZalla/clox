@@ -20,6 +20,10 @@ static Obj *allocateObject(size_t size, ObjType type)
 	// Initializes fields.
 	object->type = type;
 
+	object->next = vm.objects;
+
+	vm.objects = object;
+
 	return object;
 }
 

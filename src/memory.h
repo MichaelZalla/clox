@@ -1,13 +1,13 @@
 #ifndef clox_memory_h
 #define clox_memory_h
 
-// NEXT_CAPACITY(prevCapacity)
-// GROW_ARRAY(uint8_t, chunk->code, prevCapacity, chunk->capacity)
-
 #include "common.h"
+#include "object.h"
 
 #define ALLOCATE(type, count) \
 	(type *)reallocate(NULL, 0, sizeof(type) * (count))
+
+#define FREE(type, pointer) reallocate(pointer, sizeof(type), 0);
 
 #define NEXT_CAPACITY(capacity) \
 	((capacity) < 8 ? 8 : (capacity) * 2)
@@ -25,5 +25,6 @@
 			0)
 
 void *reallocate(void *pointer, size_t oldSize, size_t newSize);
+void freeObjects();
 
 #endif // !clox_memory_h
