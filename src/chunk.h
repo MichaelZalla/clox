@@ -11,6 +11,7 @@ typedef enum
 	OP_TRUE,					// Literal.
 	OP_FALSE,					// Literal.
 	OP_POP,						// Stack manipulation.
+	OP_GET_GLOBAL,		// Global read.
 	OP_DEFINE_GLOBAL, // Global declaration.
 	OP_EQUAL,					// Comparison.
 	OP_GREATER,				// Comparison.

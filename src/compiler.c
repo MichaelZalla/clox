@@ -204,6 +204,30 @@ static void declaration();
 static ParseRule *getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 
+static uint8_t identifierConstant(Token *name)
+{
+	// Produces an ObjString from the identifier token's lexeme.
+	ObjString *identifierString = copyString(name->start, name->length);
+
+	Value value = OBJ_VAL((Obj *)identifierString);
+
+	// Inserts the Value (string) into the chunk's constants table.
+	return makeConstant(value);
+}
+
+static uint8_t parseVariable(const char *errorMessage)
+{
+	consume(TOKEN_IDENTIFIER, errorMessage);
+
+	// Returns the new constant's index in the chunk's constants table.
+	return identifierConstant(&parser.previousToken);
+}
+
+static void defineVariable(uint8_t globalVarConstantIndex)
+{
+	emitBytes(OP_DEFINE_GLOBAL, globalVarConstantIndex);
+}
+
 static void binary()
 {
 	// Assumes that we've already consumed the tokens for the entire left-hand
@@ -328,6 +352,18 @@ static void string()
 	emitConstant(value);
 }
 
+static void namedVariable(Token name)
+{
+	uint8_t globalVarConstantIndex = identifierConstant(&name);
+
+	emitBytes(OP_GET_GLOBAL, globalVarConstantIndex);
+}
+
+static void variable()
+{
+	namedVariable(parser.previousToken);
+}
+
 static void unary()
 {
 	// Assumes that we've already consumed the token for the unary operator,
@@ -383,7 +419,7 @@ ParseRule rules[] = {
 		[TOKEN_LESS] = {NULL, binary, PREC_COMPARISON},
 		[TOKEN_LESS_EQUAL] = {NULL, binary, PREC_COMPARISON},
 
-		[TOKEN_IDENTIFIER] = {NULL, NULL, PREC_NONE},
+		[TOKEN_IDENTIFIER] = {variable, NULL, PREC_NONE},
 		[TOKEN_STRING] = {string, NULL, PREC_NONE},
 		[TOKEN_NUMBER] = {number, NULL, PREC_NONE},
 
@@ -443,30 +479,6 @@ static void parsePrecedence(Precedence precedence)
 		// function that we found.
 		infixRuleFn();
 	}
-}
-
-static uint8_t identifierConstant(Token *name)
-{
-	// Produces an ObjString from the identifier token's lexeme.
-	ObjString *identifierString = copyString(name->start, name->length);
-
-	Value value = OBJ_VAL((Obj *)identifierString);
-
-	// Inserts the Value (string) into the chunk's constants table.
-	return makeConstant(value);
-}
-
-static uint8_t parseVariable(const char *errorMessage)
-{
-	consume(TOKEN_IDENTIFIER, errorMessage);
-
-	// Returns the new constant's index in the chunk's constants table.
-	return identifierConstant(&parser.previousToken);
-}
-
-static void defineVariable(uint8_t globalVarConstantIndex)
-{
-	emitBytes(OP_DEFINE_GLOBAL, globalVarConstantIndex);
 }
 
 static ParseRule *getRule(TokenType type)

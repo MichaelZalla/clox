@@ -152,6 +152,26 @@ static InterpretResult run()
 			pop();
 			break;
 
+		case OP_GET_GLOBAL:
+		{
+			// Reads the string (value) stored in the current chunk's constant table,
+			// at the index given by the byte that follows OP_GET_GLOBAL.
+			ObjString *globalVariableName = READ_STRING();
+
+			Value value;
+
+			if (!tableGet(&vm.globals, globalVariableName, &value))
+			{
+				runtimeError("Undefined variable '%s'.", globalVariableName->chars);
+
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			push(value);
+
+			break;
+		}
+
 		case OP_DEFINE_GLOBAL:
 		{
 			// Reads the string (value) stored in the current chunk's constant table,
