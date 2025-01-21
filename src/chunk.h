@@ -10,6 +10,7 @@ typedef enum
 	OP_NIL,			 // Literal.
 	OP_TRUE,		 // Literal.
 	OP_FALSE,		 // Literal.
+	OP_POP,			 // Stack manipulation.
 	OP_EQUAL,		 // Comparison.
 	OP_GREATER,	 // Comparison.
 	OP_LESS,		 // Comparison.
@@ -19,6 +20,7 @@ typedef enum
 	OP_DIVIDE,	 // Binary divide.
 	OP_NEGATE,	 // Unary negate.
 	OP_NOT,			 // Unary not.
+	OP_PRINT,		 // Prints to stdout.
 	OP_RETURN,	 // Return from the current function.
 } OpCode;
 

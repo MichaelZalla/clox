@@ -126,6 +126,23 @@ static void consume(TokenType type, const char *message)
 	errorAtCurrent(message);
 }
 
+static bool check(TokenType type)
+{
+	return parser.currentToken.type == type;
+}
+
+static bool match(TokenType type)
+{
+	if (!check(type))
+	{
+		return false;
+	}
+
+	advance();
+
+	return true;
+}
+
 static void emitByte(uint8_t byte)
 {
 	// Writes the given byte (which may be an opcode,or operand).
@@ -182,6 +199,8 @@ static void endCompiler()
 
 // Forward declarations.
 static void expression();
+static void statement();
+static void declaration();
 static ParseRule *getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 
@@ -433,7 +452,110 @@ static ParseRule *getRule(TokenType type)
 
 static void expression()
 {
+	// Note: Each bytecode instruction that is part of an expression has a "stack
+	// effect" that measures how the instruction grows or shrinks the stack. The
+	// net stack effect of all instructions in a given expression is always 1.
+	//
+	//       |+1  +1  -1  +1  -1| = 1
+	// e.g., ((1   2   +)  3   /)
+	//
+	// Put in other words, any expression produces 1 net-new value on the stack.
+
 	parsePrecedence(PREC_ASSIGNMENT);
+}
+
+static void expressionStatement()
+{
+	// Compiles the expression.
+	expression();
+
+	// Consumes the semicolon terminating the expression statement.
+	consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
+
+	// Discards the result.
+	emitByte(OP_POP);
+}
+
+static void printStatement()
+{
+	// Compiles the expression that follows the `print` token.
+	expression();
+
+	// Consumes the semicolon terminating the print statement.
+	consume(TOKEN_SEMICOLON, "Expect ';' after value.");
+
+	emitByte(OP_PRINT);
+}
+
+static void synchronize()
+{
+	parser.panicMode = false;
+
+	while (parser.currentToken.type != TOKEN_EOF)
+	{
+		if (parser.previousToken.type == TOKEN_SEMICOLON)
+		{
+			// The preceding token indicates a statement boundary; return.
+			return;
+		}
+
+		switch (parser.currentToken.type)
+		{
+		case TOKEN_CLASS:
+			/* falls through */
+		case TOKEN_FUN:
+			/* falls through */
+		case TOKEN_VAR:
+			/* falls through */
+		case TOKEN_FOR:
+			/* falls through */
+		case TOKEN_IF:
+			/* falls through */
+		case TOKEN_WHILE:
+			/* falls through */
+		case TOKEN_PRINT:
+			/* falls through */
+		case TOKEN_RETURN:
+			// The current token indicates the start of a new statement; return.
+			return;
+		default:; // Do nothing.
+		}
+
+		// Skips tokens indiscriminately until we reach something that looks like
+		// a statement boundary.
+		advance();
+	}
+}
+
+static void declaration()
+{
+	statement();
+
+	// Lox uses statements as the boundaries for synchronizing error reporting.
+	if (parser.panicMode)
+	{
+		synchronize();
+	}
+}
+
+static void statement()
+{
+	// Note: The sum stack effects of all bytecode instructions in a statement
+	// will ways be zero; therefore, a statement produces no values—ultimately
+	// leaving the original stack unchanged.
+
+	// This property is especially necessary to support looping control flow—such
+	// as a `for` statement—as these may loop for many more iterations than the
+	// stack has capacity to grow (or shrink).
+
+	if (match(TOKEN_PRINT))
+	{
+		printStatement();
+	}
+	else
+	{
+		expressionStatement();
+	}
 }
 
 bool compile(const char *source, Chunk *chunk)
@@ -447,9 +569,10 @@ bool compile(const char *source, Chunk *chunk)
 
 	advance();
 
-	expression();
-
-	consume(TOKEN_EOF, "Expect end of expression.");
+	while (!match(TOKEN_EOF))
+	{
+		declaration();
+	}
 
 	endCompiler();
 

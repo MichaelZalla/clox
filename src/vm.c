@@ -145,6 +145,10 @@ static InterpretResult run()
 			push(BOOL_VAL(false));
 			break;
 
+		case OP_POP:
+			pop();
+			break;
+
 		case OP_EQUAL:
 		{
 			Value b = pop();
@@ -224,10 +228,15 @@ static InterpretResult run()
 			break;
 		}
 
-		case OP_RETURN:
-		{
+		case OP_PRINT:
+			// Prints the evaluated expression, located at the top of the stack.
 			printValue(pop());
 			printf("\n");
+			break;
+
+		case OP_RETURN:
+		{
+			// Exit the interpreter.
 			return INTERPRET_OK;
 		}
 		}
