@@ -53,11 +53,13 @@ void initVM()
 	vm.objects = NULL;
 
 	initTable(&vm.strings);
+	initTable(&vm.globals);
 }
 
 void freeVM()
 {
 	freeTable(&vm.strings);
+	freeTable(&vm.globals);
 
 	freeObjects();
 }
@@ -90,6 +92,7 @@ static InterpretResult run()
 {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define READ_STRING() AS_STRING(READ_CONSTANT())
 #define BINARY_OP(valueType, op)                    \
 	do                                                \
 	{                                                 \
@@ -148,6 +151,28 @@ static InterpretResult run()
 		case OP_POP:
 			pop();
 			break;
+
+		case OP_DEFINE_GLOBAL:
+		{
+			// Reads the string (value) stored in the current chunk's constant table,
+			// at the index given by the byte that follows OP_DEFINE_GLOBAL.
+			ObjString *globalVariableName = READ_STRING();
+
+			Value initializer = peek(0);
+
+			// Inserts the key (name) and value (initializer) into `vm.globals`.
+
+			// Note: By definition, Lox allows the user to redeclare previously
+			// declared globals.
+			tableSet(&vm.globals, globalVariableName, initializer);
+
+			// Note: We peek the initializer (value) above and pop() it later, here;
+			// this prevents the Value's memory from leaking if GC is triggered in the
+			// middle of adding it to the hash table (which may very well occur, as a
+			// table insert might require a table resize).
+			pop();
+		}
+		break;
 
 		case OP_EQUAL:
 		{
@@ -242,9 +267,10 @@ static InterpretResult run()
 		}
 	}
 
-#undef BINARY_OP
-#undef READ_CONSTANT
 #undef READ_BYTE
+#undef READ_CONSTANT
+#undef READ_STRING
+#undef BINARY_OP
 }
 
 void push(Value value)

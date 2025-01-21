@@ -445,6 +445,30 @@ static void parsePrecedence(Precedence precedence)
 	}
 }
 
+static uint8_t identifierConstant(Token *name)
+{
+	// Produces an ObjString from the identifier token's lexeme.
+	ObjString *identifierString = copyString(name->start, name->length);
+
+	Value value = OBJ_VAL((Obj *)identifierString);
+
+	// Inserts the Value (string) into the chunk's constants table.
+	return makeConstant(value);
+}
+
+static uint8_t parseVariable(const char *errorMessage)
+{
+	consume(TOKEN_IDENTIFIER, errorMessage);
+
+	// Returns the new constant's index in the chunk's constants table.
+	return identifierConstant(&parser.previousToken);
+}
+
+static void defineVariable(uint8_t globalVarConstantIndex)
+{
+	emitBytes(OP_DEFINE_GLOBAL, globalVarConstantIndex);
+}
+
 static ParseRule *getRule(TokenType type)
 {
 	return &rules[type];
@@ -462,6 +486,29 @@ static void expression()
 	// Put in other words, any expression produces 1 net-new value on the stack.
 
 	parsePrecedence(PREC_ASSIGNMENT);
+}
+
+static void variableDeclaration()
+{
+	// Registers a new global constant, returning its constant index.
+	uint8_t globalVarConstantIndex = parseVariable("Expect variable name.");
+
+	if (match(TOKEN_EQUAL))
+	{
+		// Variable declaration with an initializer; leaves the evaluated result
+		// on the stack.
+		expression();
+	}
+	else
+	{
+		// Variable declaration without an initializer; leaves `nil` on the stack.
+		emitByte(OP_NIL);
+	}
+
+	// Consumes the semicolon terminating the declaration.
+	consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+
+	defineVariable(globalVarConstantIndex);
 }
 
 static void expressionStatement()
@@ -529,7 +576,14 @@ static void synchronize()
 
 static void declaration()
 {
-	statement();
+	if (match(TOKEN_VAR))
+	{
+		variableDeclaration();
+	}
+	else
+	{
+		statement();
+	}
 
 	// Lox uses statements as the boundaries for synchronizing error reporting.
 	if (parser.panicMode)
