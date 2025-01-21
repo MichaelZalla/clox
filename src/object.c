@@ -4,6 +4,7 @@
 #include "memory.h"
 #include "object.h"
 #include "value.h"
+#include "table.h"
 #include "vm.h"
 
 #define ALLOCATE_OBJ(type, objectType) \
@@ -37,6 +38,10 @@ static ObjString *allocateString(char *chars, int length, uint32_t hash)
 	string->chars = chars;
 	string->hash = hash;
 
+	// Make sure this string is represented in our set of interned strings.
+	// [string key : nil value]
+	tableSet(&vm.strings, string, NIL_VAL);
+
 	return string;
 }
 
@@ -59,6 +64,18 @@ ObjString *takeString(char *chars, int length)
 {
 	uint32_t hash = hashString(chars, length);
 
+	// Re-uses an existing interned string, if possible.
+	ObjString *internedString = tableFindString(&vm.strings, chars, length, hash);
+
+	if (internedString != NULL)
+	{
+		// Since we've been given ownership of the original string, and it can be
+		// represented by an existing (interned) string, we free the original.
+		FREE_ARRAY(char, chars, length + 1);
+
+		return internedString;
+	}
+
 	return allocateString(chars, length, hash);
 }
 
@@ -66,6 +83,14 @@ ObjString *copyString(const char *chars, int length)
 {
 	// Computes a hash code.
 	uint32_t hash = hashString(chars, length);
+
+	// Re-uses an existing interned string, if possible.
+	ObjString *internedString = tableFindString(&vm.strings, chars, length, hash);
+
+	if (internedString != NULL)
+	{
+		return internedString;
+	}
 
 	// Make a heap allocation to store the string's bytes, plus a null terminator.
 	char *heapChars = ALLOCATE(char, length + 1);
