@@ -191,8 +191,38 @@ static InterpretResult run()
 			// middle of adding it to the hash table (which may very well occur, as a
 			// table insert might require a table resize).
 			pop();
+
+			break;
 		}
-		break;
+
+		case OP_SET_GLOBAL:
+		{
+			// Reads the string (value) stored in the current chunk's constant table,
+			// at the index given by the byte that follows OP_SET_GLOBAL.
+			ObjString *globalVariableName = READ_STRING();
+
+			bool isNewKey = tableSet(&vm.globals, globalVariableName, peek(0));
+
+			// Checks whether the variable (identifier) is already defined.
+			if (isNewKey)
+			{
+				// If the identifier wasn't previously defined in the table, this should
+				// be considered an invalid assignment expression, i.e., "Undefined
+				// variable" scenario.
+
+				// Deletes the associated "zombie" entry from the table.
+				tableDelete(&vm.globals, globalVariableName);
+
+				runtimeError("Undefined variable '%s'.", globalVariableName->chars);
+
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			// We avoid popping the assignment's value off the stack because an
+			// assignment is an expression, and all expressions preserve the stack.
+
+			break;
+		}
 
 		case OP_EQUAL:
 		{

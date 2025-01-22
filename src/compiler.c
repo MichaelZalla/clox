@@ -37,7 +37,7 @@ typedef enum
 	PREC_PRIMARY
 } Precedence;
 
-typedef void (*ParseFn)();
+typedef void (*ParseFn)(bool canAssign);
 
 // Represents a single row in the parsing table.
 typedef struct
@@ -228,7 +228,7 @@ static void defineVariable(uint8_t globalVarConstantIndex)
 	emitBytes(OP_DEFINE_GLOBAL, globalVarConstantIndex);
 }
 
-static void binary()
+static void binary(bool canAssign)
 {
 	// Assumes that we've already consumed the tokens for the entire left-hand
 	// operand (expression), as well as the token for the (infix) binary operator,
@@ -295,7 +295,7 @@ static void binary()
 	}
 }
 
-static void literal()
+static void literal(bool canAssign)
 {
 	switch (parser.previousToken.type)
 	{
@@ -317,7 +317,7 @@ static void literal()
 	}
 }
 
-static void grouping()
+static void grouping(bool canAssign)
 {
 	// Compiles the expression between the pair of parentheses.
 	expression();
@@ -326,7 +326,7 @@ static void grouping()
 	consume(TOKEN_RIGHT_PAREN, "Expect ')' after grouping expression.");
 }
 
-static void number()
+static void number(bool canAssign)
 {
 	// Assumes that we've already consumed the token for this number literal,
 	// and have stored it in `previousToken`; we convert the lexeme to a double
@@ -336,7 +336,7 @@ static void number()
 	emitConstant(NUMBER_VAL(value));
 }
 
-static void string()
+static void string(bool canAssign)
 {
 	// Captures the string's characters directly from the lexeme—omitting the
 	// opening and closing quotes.
@@ -352,19 +352,28 @@ static void string()
 	emitConstant(value);
 }
 
-static void namedVariable(Token name)
+static void namedVariable(Token name, bool canAssign)
 {
 	uint8_t globalVarConstantIndex = identifierConstant(&name);
 
-	emitBytes(OP_GET_GLOBAL, globalVarConstantIndex);
+	if (canAssign && match(TOKEN_EQUAL))
+	{
+		expression();
+
+		emitBytes(OP_SET_GLOBAL, globalVarConstantIndex);
+	}
+	else
+	{
+		emitBytes(OP_GET_GLOBAL, globalVarConstantIndex);
+	}
 }
 
-static void variable()
+static void variable(bool canAssign)
 {
-	namedVariable(parser.previousToken);
+	namedVariable(parser.previousToken, canAssign);
 }
 
-static void unary()
+static void unary(bool canAssign)
 {
 	// Assumes that we've already consumed the token for the unary operator,
 	// and have it stored in `previousToken`.
@@ -461,9 +470,11 @@ static void parsePrecedence(Precedence precedence)
 		return;
 	}
 
+	bool canAssign = precedence <= PREC_ASSIGNMENT;
+
 	// Compiles the rest of the prefix expression, consuming any other tokens it
 	// needs, and then returns back.
-	prefixRuleFn();
+	prefixRuleFn(canAssign);
 
 	while (precedence <= getRule(parser.currentToken.type)->precedence)
 	{
@@ -477,7 +488,13 @@ static void parsePrecedence(Precedence precedence)
 
 		// Consume the infix operator and hand off control to the infix parsing
 		// function that we found.
-		infixRuleFn();
+		infixRuleFn(canAssign);
+	}
+
+	// A non-assignable expression was on the left side of a TOKEN_EQUAL.
+	if (canAssign && match(TOKEN_EQUAL))
+	{
+		error("Invalid assignment target.");
 	}
 }
 

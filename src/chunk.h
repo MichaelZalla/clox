@@ -13,6 +13,7 @@ typedef enum
 	OP_POP,						// Stack manipulation.
 	OP_GET_GLOBAL,		// Global read.
 	OP_DEFINE_GLOBAL, // Global declaration.
+	OP_SET_GLOBAL,		// Global assignment.
 	OP_EQUAL,					// Comparison.
 	OP_GREATER,				// Comparison.
 	OP_LESS,					// Comparison.
