@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "chunk.h"
 #include "common.h"
@@ -227,6 +228,16 @@ static void beginScope()
 static void endScope()
 {
 	current->scopeDepth -= 1;
+
+	// Rolls back the "locals" stack, "freeing" any locals in this scope.
+	while (current->localCount > 0 && current->locals[current->localCount - 1].depth > current->scopeDepth)
+	{
+		// Relinquishes this local's slot on the VM's runtime stack.
+		emitByte(OP_POP);
+
+		// Relinquishes this local's position in the compiler's "locals" stack.
+		current->localCount -= 1;
+	}
 }
 
 // Forward declarations.
@@ -247,16 +258,107 @@ static uint8_t identifierConstant(Token *name)
 	return makeConstant(value);
 }
 
+static bool identifiersEqual(Token *a, Token *b)
+{
+	if (a->length != b->length)
+	{
+		return false;
+	}
+
+	return memcmp(a->start, b->start, a->length) == 0;
+}
+
+static void addLocal(Token name)
+{
+	// Bounds check.
+	if (current->localCount == UINT8_COUNT)
+	{
+		error("Too many local variables in scope.");
+
+		return;
+	}
+
+	// Writes the local (name) to the current compiler's stack of locals.
+	Local *local = &current->locals[current->localCount];
+
+	// Increments the "locals" stack pointer.
+	current->localCount += 1;
+
+	local->name = name;
+	local->depth = current->scopeDepth;
+}
+
+static void declareVariable()
+{
+	if (current->scopeDepth == 0)
+	{
+		// Local variables can only be declared inside of a block scope. A top-level
+		// variable declaration would be a global; registering of globals is handled
+		// by `identifierConstant()`.
+
+		// Global variables are also late-bound in Lox, so the compiler doesn't
+		// track which declarations for them it has seen.
+
+		return;
+	}
+
+	Token *name = &parser.previousToken;
+
+	// Start at the end of `locals[]` and work backwards, looking for an
+	// existing variables with the same name.
+	for (int i = current->localCount - 1; i >= 0; i--)
+	{
+		Local *local = &current->locals[i];
+
+		if (local->depth != -1 && local->depth < current->scopeDepth)
+		{
+			// We've traversed into a different scope, or we've reached the beginning
+			// of the locals array.
+
+			break;
+		}
+
+		// Here, we know that `local` exists in the same scope as `name`.
+		if (identifiersEqual(name, &local->name))
+		{
+			error("Already a variable with this name in scope.");
+		}
+	}
+
+	// Adds this local to the compiler's list of variables in the current scope.
+	addLocal(*name);
+}
+
 static uint8_t parseVariable(const char *errorMessage)
 {
 	consume(TOKEN_IDENTIFIER, errorMessage);
 
-	// Returns the new constant's index in the chunk's constants table.
+	declareVariable();
+
+	if (current->scopeDepth > 0)
+	{
+		// At runtime, local variables aren't resolved by name—so there's no need
+		// to insert a name into the constants table; we return a dummy index of 0.
+
+		return 0;
+	}
+
+	// Returns the new constant's index in the current chunk's constants table.
 	return identifierConstant(&parser.previousToken);
 }
 
 static void defineVariable(uint8_t globalVarConstantIndex)
 {
+	if (current->scopeDepth > 0)
+	{
+		// There is no code emitted to "create" a local variable at runtime;
+		// `defineVariable()` is called by `variableDeclaration()`, which will have
+		// already placed an initializer value (i.e., temporary, or nil) on top of
+		// the stack. This local variable effectively represents that stack address.
+
+		return;
+	}
+
 	emitBytes(OP_DEFINE_GLOBAL, globalVarConstantIndex);
 }
 
@@ -561,8 +663,18 @@ static void block()
 
 static void variableDeclaration()
 {
-	// Registers a new global constant, returning its constant index.
-	uint8_t globalVarConstantIndex = parseVariable("Expect variable name.");
+	// Declares a new global or local variable, compiling its initializer
+	// expression if provided; when no initializer is provided, the variable is
+	// initialized to `VAL_NIL`.
+
+	// If the declaration occurs in the top-level scope (i.e., depth zero), it's
+	// treated as a global variable, and its identifier is registered in the
+	// current chunk's constants table. If the declaration is nested inside of
+	// a scope, then it's treated as a local variable; local variables are not
+	// registered in any runtime data structure (like `constants[]`), but, rather
+	// the compiler performs some bookkeeping in the context of the current scope.
+
+	uint8_t globalConstantIndexOrZero = parseVariable("Expect variable name.");
 
 	if (match(TOKEN_EQUAL))
 	{
@@ -579,7 +691,7 @@ static void variableDeclaration()
 	// Consumes the semicolon terminating the declaration.
 	consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
-	defineVariable(globalVarConstantIndex);
+	defineVariable(globalConstantIndexOrZero);
 }
 
 static void expressionStatement()
