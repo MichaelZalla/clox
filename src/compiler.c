@@ -20,8 +20,6 @@ typedef struct
 	bool panicMode;
 } Parser;
 
-Parser parser;
-
 typedef enum
 {
 	PREC_NONE,
@@ -46,6 +44,23 @@ typedef struct
 	ParseFn infix;
 	Precedence precedence;
 } ParseRule;
+
+typedef struct
+{
+	Token name; // Stores a copy of the Token struct for the identifier.
+	int depth;
+} Local;
+
+typedef struct
+{
+	Local locals[UINT8_COUNT];
+	int localCount;
+	int scopeDepth;
+} Compiler;
+
+Parser parser;
+
+Compiler *current = NULL;
 
 Chunk *compilingChunk;
 
@@ -183,6 +198,13 @@ static void emitConstant(Value value)
 	uint8_t index = makeConstant(value);
 
 	emitBytes(OP_CONSTANT, index);
+}
+
+static void initCompiler(Compiler *compiler)
+{
+	compiler->localCount = 0;
+	compiler->scopeDepth = 0;
+	current = compiler;
 }
 
 static void endCompiler()
@@ -644,6 +666,10 @@ static void statement()
 bool compile(const char *source, Chunk *chunk)
 {
 	initScanner(source);
+
+	Compiler compiler;
+
+	initCompiler(&compiler);
 
 	compilingChunk = chunk;
 
