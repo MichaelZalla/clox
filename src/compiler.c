@@ -441,6 +441,32 @@ static void defineVariable(uint8_t globalVarConstantIndex)
 	emitBytes(OP_DEFINE_GLOBAL, globalVarConstantIndex);
 }
 
+static void and_(bool canAssign)
+{
+	// The logical `and` operator strings together multiple expressions, and
+	// operates like a control-flow expression (if, for, etc); the left-hand
+	// operand may short-circuit evaluation of the right-hand operand, if the
+	// left-hand operand is found to be falsey.
+
+	// Therefore we may jump over the right-hand expression, conditionally.
+
+	// Note: If we do jump, we leave the falsey expression on the stack, because
+	// logical operators (like "and") form compound expressions that reduce to
+	// simple boolean expressions—and expressions should produce a stack result.
+
+	int jumpOverRightOperand = emitJump(OP_JUMP_IF_FALSE);
+
+	// Pops the left-hand operand off the stack, as the result of this "and" will
+	// be the result of the right-hand operand expression.
+	emitByte(OP_POP);
+
+	// Parse the right-hand operand expression.
+	parsePrecedence(PREC_AND);
+
+	// Patch the "over right" jump offset (above) in case we can jump.
+	patchJump(jumpOverRightOperand);
+}
+
 static void binary(bool canAssign)
 {
 	// Assumes that we've already consumed the tokens for the entire left-hand
@@ -547,6 +573,33 @@ static void number(bool canAssign)
 	double value = strtod(parser.previousToken.start, NULL);
 
 	emitConstant(NUMBER_VAL(value));
+}
+
+static void or_(bool canAssign)
+{
+	// The logical "or" operator strings together multiple expressions, and
+	// operates like a control-flow expression  (if, for, etc). As an
+	// optimization, we can skip evaluation of the right-hand operand if we find
+	// the left-hand operand to be truthy.
+
+	// When the left-hand side is truthy, we jump over the right-hand operand;
+	// if it's falsey, we "jump over the jump", evaluating the right-hand side.
+
+	int jumpOverJump = emitJump(OP_JUMP_IF_FALSE);
+
+	int jumpOverRightOperand = emitJump(OP_JUMP);
+
+	patchJump(jumpOverJump);
+
+	// Pops the left-hand operand off the stack, as the result of this "or" will
+	// be the result of the right-hand operand expression.
+	emitByte(OP_POP);
+
+	// Parse the right-hand operand expression.
+	parsePrecedence(PREC_OR);
+
+	// Patch the "over right" jump offset (above) in case the left-hand is truthy.
+	patchJump(jumpOverRightOperand);
 }
 
 static void string(bool canAssign)
@@ -667,7 +720,7 @@ ParseRule rules[] = {
 		[TOKEN_STRING] = {string, NULL, PREC_NONE},
 		[TOKEN_NUMBER] = {number, NULL, PREC_NONE},
 
-		[TOKEN_AND] = {NULL, NULL, PREC_NONE},
+		[TOKEN_AND] = {NULL, and_, PREC_AND},
 		[TOKEN_CLASS] = {NULL, NULL, PREC_NONE},
 		[TOKEN_ELSE] = {NULL, NULL, PREC_NONE},
 		[TOKEN_FALSE] = {literal, NULL, PREC_NONE},
@@ -675,7 +728,7 @@ ParseRule rules[] = {
 		[TOKEN_FUN] = {NULL, NULL, PREC_NONE},
 		[TOKEN_IF] = {NULL, NULL, PREC_NONE},
 		[TOKEN_NIL] = {literal, NULL, PREC_NONE},
-		[TOKEN_OR] = {NULL, NULL, PREC_NONE},
+		[TOKEN_OR] = {NULL, or_, PREC_OR},
 		[TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
 		[TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
 		[TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
