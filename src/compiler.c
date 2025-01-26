@@ -883,6 +883,113 @@ static void expressionStatement()
 	emitByte(OP_POP);
 }
 
+static void forStatement()
+{
+	// Creates a new lexical scope, as our "for" statement may have an initializer
+	// that declares new variables; those should be scoped to the "for" statement.
+	beginScope();
+
+	// Compiles the "for" statement's optional clauses.
+	consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+
+	// Compiles the initializer clause.
+	if (match(TOKEN_SEMICOLON))
+	{
+		// No initializer.
+	}
+	else if (match(TOKEN_VAR))
+	{
+		// Variable declaration as initializer.
+		variableDeclaration();
+	}
+	else
+	{
+		// Expression as initializer.
+		// Note: We call `expressionStatement()` rather than `expression()`, here,
+		// as non-declaration initializers only serve to produce side-effects—so we
+		// don't want to keep the expression's result on the stack. The call to
+		// `expressionStatement()` accomplishes this, while also taking a semicolon.
+		expressionStatement();
+	}
+
+	// Record where this loop statement's condition clause begins.
+	int loopTopStart = currentChunk()->count;
+
+	// Compiles the condition clause.
+	int jumpToExitLoop = -1; // Sentinel.
+
+	if (!match(TOKEN_SEMICOLON))
+	{
+		// Compiles the condition expression, producing a value on the stack.
+		expression();
+
+		// Consumes the semicolon following the condition expression.
+		consume(TOKEN_SEMICOLON, "Expect ';' after loop condition.");
+
+		// Jumps out of the loop if the condition is false.
+		jumpToExitLoop = emitJump(OP_JUMP_IF_FALSE);
+
+		// Pops the condition expression off the stack if we didn't jump/exit.
+		emitByte(OP_POP);
+	}
+
+	// Compiles the increment clause.
+	if (!match(TOKEN_RIGHT_PAREN))
+	{
+		// Emit an unconditional jump to the loop's main body; this is necessary
+		// because our single-pass compiler must compile the increment clause before
+		// compiling the body—yet we expect to execute the body (once) before we
+		// ever execute the increment clause.
+		int jumpToLoopBody = emitJump(OP_JUMP);
+
+		// Record where this increment clause begins in the bytecode.
+		int incrementClauseStart = currentChunk()->count;
+
+		// Compiles the increment clause (expression); because this expression is
+		// only used to produce side-effects (such as incrementing a counter), we
+		// don't want to keep its result on the stack.
+		expression();
+		emitByte(OP_POP);
+
+		// Takes the closing parentheses.
+		consume(TOKEN_RIGHT_PAREN, "Expect ')' after 'for' clauses.");
+
+		// After running the increment clause, we loop back to the condition clause.
+		emitLoop(loopTopStart);
+
+		// Since an increment clause was provided, we treat it as the "top" of our
+		// loop—meaning that, on any subsequent iteration of the loop, we begin by
+		// executive the increment clause, which itself jumps back to the condition.
+		loopTopStart = incrementClauseStart;
+
+		// We're now at the loop's main body.
+		patchJump(jumpToLoopBody);
+	}
+
+	// Compiles the "for" statement's body.
+	statement();
+
+	// Jumps backwards to either (a) the increment clause (if there is one), (b)
+	// the condition clause (if there is one), or (c) the main loop body (if no
+	// condition or increment causes were provided, i.e., an infinite for loop).
+	emitLoop(loopTopStart);
+
+	if (jumpToExitLoop != -1)
+	{
+		// If a looping condition was provided, then patch the "exit" jump.
+		patchJump(jumpToExitLoop);
+
+		// Pops the condition expression off the stack if we did jump/exit.
+		emitByte(OP_POP);
+
+		// If no jump was emitted, then there is no jump to patch, and no condition
+		// value to pop off the stack.
+	}
+
+	// Exits the scope that we created at the beginning of the statement.
+	endScope();
+}
+
 static void ifStatement()
 {
 	// Compiles a jump condition.
@@ -1029,6 +1136,11 @@ static void statement()
 	{
 		// A print statement.
 		printStatement();
+	}
+	else if (match(TOKEN_FOR))
+	{
+		// A "for" statement.
+		forStatement();
 	}
 	else if (match(TOKEN_IF))
 	{
