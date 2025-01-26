@@ -13,6 +13,9 @@ void disassembleChunk(Chunk *chunk, const char *name)
 	}
 }
 
+// Forward declarations.
+static int byteInstruction(const char *name, Chunk *chunk, int offset);
+
 int disassembleInstruction(Chunk *chunk, int offset)
 {
 	printf("%04d ", offset); // Prints byte offset (index) of the instruction.
@@ -40,6 +43,12 @@ int disassembleInstruction(Chunk *chunk, int offset)
 		return simpleInstruction("OP_FALSE", offset);
 	case OP_POP:
 		return simpleInstruction("OP_POP", offset);
+	case OP_GET_LOCAL:
+		// Local names are erased by the compiler, so we output the local's index.
+		return byteInstruction("OP_GET_LOCAL", chunk, offset);
+	case OP_SET_LOCAL:
+		// Local names are erased by the compiler, so we output the local's index.
+		return byteInstruction("OP_SET_LOCAL", chunk, offset);
 	case OP_GET_GLOBAL:
 		return constantInstruction("OP_GET_GLOBAL", chunk, offset);
 	case OP_DEFINE_GLOBAL:
@@ -70,7 +79,8 @@ int disassembleInstruction(Chunk *chunk, int offset)
 		return simpleInstruction("OP_RETURN", offset);
 	default:
 		printf("Unknown opcode %d\n", instruction); // Compiler bug.
-		return offset + 1;
+
+		return offset + 1; // A single-byte (simple) instruction (`[OP_*]`).
 	}
 }
 
@@ -78,16 +88,29 @@ int simpleInstruction(const char *name, int offset)
 {
 	printf("%s\n", name);
 
-	return offset + 1; // A single-byte (simple) instruction.
+	return offset + 1; // A single-byte (simple) instruction (`[OP_*]`).
+}
+
+static int byteInstruction(const char *name, Chunk *chunk, int offset)
+{
+	uint8_t slot = chunk->code[offset + 1]; // Reads the `locals[]` stack index.
+
+	// Prints the instruction (e.g., `OP_GET_LOCAL`) and the `locals[]` index.
+	printf("%-16s %4d\n", name, slot);
+
+	return offset + 2; // A two-byte instruction (`[OP_*] [index]`).
 }
 
 int constantInstruction(const char *name, Chunk *chunk, int offset)
 {
 	uint8_t constantIndex = chunk->code[offset + 1];
 
+	// Prints the instruction (e.g., `OP_CONSTANT`) and the constant index.
 	printf("%-16s %4d '", name, constantIndex);
+
+	// Prints the constant's value from the current chunk's constants array.
 	printValue(chunk->constants.values[constantIndex]);
 	printf("'\n");
 
-	return offset + 2; // A two-byte instruction (e.g., `[CONSTANT] [index]`).
+	return offset + 2; // A two-byte instruction (`[OP_*] [constantIndex]`).
 }

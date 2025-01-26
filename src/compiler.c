@@ -268,6 +268,30 @@ static bool identifiersEqual(Token *a, Token *b)
 	return memcmp(a->start, b->start, a->length) == 0;
 }
 
+static int resolveLocal(Compiler *compiler, Token *name)
+{
+	// Walks the list of locals that are currently in scope; if one has the same
+	// name as the identifier token, the identifier must refer to that variable.
+
+	for (int i = compiler->localCount - 1; i >= 0; i--)
+	{
+		Local *local = &compiler->locals[i];
+
+		if (identifiersEqual(&local->name, name))
+		{
+			// Checks whether or not the local is fully defined yet, or just declared.
+			if (local->depth == -1)
+			{
+				error("Can't read local variable inside its own initializer.");
+			}
+
+			return i;
+		}
+	}
+
+	return -1;
+}
+
 static void addLocal(Token name)
 {
 	// Bounds check.
@@ -285,11 +309,13 @@ static void addLocal(Token name)
 	current->localCount += 1;
 
 	local->name = name;
-	local->depth = current->scopeDepth;
+	local->depth = -1; // Sentinel.
 }
 
 static void declareVariable()
 {
+	// In Lox, a variable is "declared" when it is added to its scope.
+
 	if (current->scopeDepth == 0)
 	{
 		// Local variables can only be declared inside of a block scope. A top-level
@@ -347,14 +373,27 @@ static uint8_t parseVariable(const char *errorMessage)
 	return identifierConstant(&parser.previousToken);
 }
 
+static void markInitialized()
+{
+	Local *lastDeclaredLocal = &current->locals[current->localCount - 1];
+
+	lastDeclaredLocal->depth = current->scopeDepth;
+}
+
 static void defineVariable(uint8_t globalVarConstantIndex)
 {
+	// In Lox, a variable is "defined" when it becomes available for use.
+
 	if (current->scopeDepth > 0)
 	{
 		// There is no code emitted to "create" a local variable at runtime;
 		// `defineVariable()` is called by `variableDeclaration()`, which will have
 		// already placed an initializer value (i.e., temporary, or nil) on top of
 		// the stack. This local variable effectively represents that stack address.
+
+		// At this point, the variable's initializer expression will be compiled;
+		// we can now mark this variable as "initialized".
+		markInitialized();
 
 		return;
 	}
@@ -488,17 +527,39 @@ static void string(bool canAssign)
 
 static void namedVariable(Token name, bool canAssign)
 {
-	uint8_t globalVarConstantIndex = identifierConstant(&name);
+	uint8_t getOp, setOp;
+
+	// Tries to find a local variable with the given name.
+	int arg = resolveLocal(current, &name);
+
+	if (arg != -1)
+	{
+		// A local variable with this name was found.
+
+		getOp = OP_GET_LOCAL;
+		setOp = OP_SET_LOCAL;
+	}
+	else
+	{
+		// Assume `name` to be a global identifier.
+
+		// In this case, `arg` represents an index into the current chunk's constant
+		// table, representing this global variable's identifier (name).
+		arg = identifierConstant(&name);
+
+		getOp = OP_GET_GLOBAL;
+		setOp = OP_SET_GLOBAL;
+	}
 
 	if (canAssign && match(TOKEN_EQUAL))
 	{
 		expression();
 
-		emitBytes(OP_SET_GLOBAL, globalVarConstantIndex);
+		emitBytes(setOp, arg);
 	}
 	else
 	{
-		emitBytes(OP_GET_GLOBAL, globalVarConstantIndex);
+		emitBytes(getOp, arg);
 	}
 }
 
@@ -674,7 +735,7 @@ static void variableDeclaration()
 	// registered in any runtime data structure (like `constants[]`), but, rather
 	// the compiler performs some bookkeeping in the context of the current scope.
 
-	uint8_t globalConstantIndexOrZero = parseVariable("Expect variable name.");
+	uint8_t globalIdentifierConstantIndexOrZero = parseVariable("Expect variable name.");
 
 	if (match(TOKEN_EQUAL))
 	{
@@ -691,7 +752,7 @@ static void variableDeclaration()
 	// Consumes the semicolon terminating the declaration.
 	consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
-	defineVariable(globalConstantIndexOrZero);
+	defineVariable(globalIdentifierConstantIndexOrZero);
 }
 
 static void expressionStatement()

@@ -152,6 +152,37 @@ static InterpretResult run()
 			pop();
 			break;
 
+		case OP_GET_LOCAL:
+		{
+			// Takes a single byte operand (representing a `locals[]` stack index).
+			uint8_t slot = READ_BYTE();
+
+			// Uses it to look up the local's current value (somewhere on the stack).
+			Value currentValue = vm.stack[slot];
+
+			// Copies the local's current value to the top of the stack, for use.
+			push(currentValue);
+
+			break;
+		}
+
+		case OP_SET_LOCAL:
+		{
+			// Takes a single byte operand (representing a `locals[]` stack index).
+			uint8_t slot = READ_BYTE();
+
+			// Writes a new value to that `locals[]` stack slot, using the top value
+			// on the stack.
+			vm.stack[slot] = peek(0);
+
+			// Note: We don't pop this value from the top of the stack, because an
+			// assignment is an expression in Lox—and all expressions should produce
+			// a value; that is to say, they should leave the result of the expression
+			// on the stack.
+
+			break;
+		}
+
 		case OP_GET_GLOBAL:
 		{
 			// Reads the string (value) stored in the current chunk's constant table,
@@ -162,7 +193,7 @@ static InterpretResult run()
 
 			if (!tableGet(&vm.globals, globalVariableName, &value))
 			{
-				runtimeError("Undefined variable '%s'.", globalVariableName->chars);
+				runtimeError("Undefined global variable '%s'.", globalVariableName->chars);
 
 				return INTERPRET_RUNTIME_ERROR;
 			}
@@ -213,7 +244,7 @@ static InterpretResult run()
 				// Deletes the associated "zombie" entry from the table.
 				tableDelete(&vm.globals, globalVariableName);
 
-				runtimeError("Undefined variable '%s'.", globalVariableName->chars);
+				runtimeError("Undefined global variable '%s'.", globalVariableName->chars);
 
 				return INTERPRET_RUNTIME_ERROR;
 			}
