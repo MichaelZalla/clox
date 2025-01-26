@@ -173,6 +173,29 @@ static void emitBytes(uint8_t byte1, uint8_t byte2)
 	emitByte(byte2);
 }
 
+static void emitLoop(int loopStart)
+{
+	// Emit a backwards jump.
+	emitByte(OP_LOOP);
+
+	// We grow our backwards jump offset by 2 to account for the 16-bit operand.
+	int currentOffsetFromLoopStart = currentChunk()->count - loopStart + 2;
+
+	// Range check.
+	if (currentOffsetFromLoopStart > UINT16_MAX)
+	{
+		error("Loop body is too large!");
+	}
+
+	// Writes the negative offset as a 16-bit `OP_LOOP` operand.
+
+	int highOrderBits = (currentOffsetFromLoopStart >> 8) & 0xff;
+	int lowOrderBits = (currentOffsetFromLoopStart) & 0xff;
+
+	emitByte(highOrderBits);
+	emitByte(lowOrderBits);
+}
+
 static int emitJump(uint8_t instruction)
 {
 	// By making `instruction` an argument to `emitJump()`, we can emit different
@@ -906,6 +929,34 @@ static void printStatement()
 	emitByte(OP_PRINT);
 }
 
+static void whileStatement()
+{
+	// Record where this "while" statement begins in the bytecode.
+	int loopStart = currentChunk()->count;
+
+	// Compiles a jump anti-condition.
+	consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+	expression();
+	consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+	int jumpAfterWhileBody = emitJump(OP_JUMP_IF_FALSE);
+
+	// Drops the condition expression from the stack (didn't jump).
+	emitByte(OP_POP);
+
+	// Compiles the while statement's body.
+	statement();
+
+	// Loops back to re-evaluate the "while" condition.
+	emitLoop(loopStart);
+
+	// End of statement body.
+	patchJump(jumpAfterWhileBody);
+
+	// Drops the condition expression from the stack (did jump).
+	emitByte(OP_POP);
+}
+
 static void synchronize()
 {
 	parser.panicMode = false;
@@ -983,6 +1034,11 @@ static void statement()
 	{
 		// An "if" statement.
 		ifStatement();
+	}
+	else if (match(TOKEN_WHILE))
+	{
+		// A "while" statement.
+		whileStatement();
 	}
 	else if (match(TOKEN_LEFT_BRACE))
 	{

@@ -28,6 +28,7 @@ typedef enum
 	OP_PRINT,					// Prints to stdout.
 	OP_JUMP,					// Unconditional jump forward.
 	OP_JUMP_IF_FALSE, // Jump if false.
+	OP_LOOP,					// Unconditional jump backward.
 	OP_RETURN,				// Return from the current function.
 } OpCode;
 

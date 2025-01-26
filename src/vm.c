@@ -363,6 +363,15 @@ static InterpretResult run()
 			break;
 		}
 
+		case OP_LOOP:
+		{
+			uint16_t jumpOffset = READ_SHORT();
+
+			vm.ip -= jumpOffset;
+
+			break;
+		}
+
 		case OP_RETURN:
 		{
 			// Exit the interpreter.
