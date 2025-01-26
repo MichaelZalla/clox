@@ -173,6 +173,24 @@ static void emitBytes(uint8_t byte1, uint8_t byte2)
 	emitByte(byte2);
 }
 
+static int emitJump(uint8_t instruction)
+{
+	// By making `instruction` an argument to `emitJump()`, we can emit different
+	// jump instructions that follow the same instruction-data format.
+	emitByte(instruction);
+
+	// Emits a (temporary) placeholder address; this will be back-patched to hold
+	// the address that represents the first instruction following an "if" block.
+
+	// We use 16 bits to encode the address, allowing users to skip a maximum of
+	// 65,535 bytes' worth of instructions per conditional.
+	emitByte(0xff);
+	emitByte(0xff);
+
+	// Returns the address (in our bytecode array) of the jump instruction above.
+	return currentChunk()->count - 2;
+}
+
 static void emitReturn()
 {
 	emitByte(OP_RETURN);
@@ -199,6 +217,28 @@ static void emitConstant(Value value)
 	uint8_t index = makeConstant(value);
 
 	emitBytes(OP_CONSTANT, index);
+}
+
+static void patchJump(int conditionalAddress)
+{
+	// Computes the size of the "then" block statement, in bytes.
+	int currentAddress = currentChunk()->count;
+
+	// Subtracts 2 bytes to account for the 16-bit jump offset (to be patched).
+	int bytesToSkip = currentAddress - conditionalAddress - 2;
+
+	// Range check.
+	if (bytesToSkip > UINT16_MAX)
+	{
+		error("Too many instructions to jump over.");
+	}
+
+	// Patches the 16-bit jump offset (higher 8 bits and lower 8 bits).
+	int highOrderBits = (bytesToSkip >> 8) & 0xff;
+	int lowOrderBits = (bytesToSkip) & 0xff;
+
+	currentChunk()->code[conditionalAddress] = highOrderBits;
+	currentChunk()->code[conditionalAddress + 1] = lowOrderBits;
 }
 
 static void initCompiler(Compiler *compiler)
@@ -767,6 +807,41 @@ static void expressionStatement()
 	emitByte(OP_POP);
 }
 
+static void ifStatement()
+{
+	// Compiles a jump condition.
+	consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+	expression();
+	consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+	// Emits a jump instruction, recording where we are in the bytecode.
+	int jumpIfFalseAddress = emitJump(OP_JUMP_IF_FALSE);
+
+	// If we take the "then" branch, pop the condition expression off the stack.
+	emitByte(OP_POP);
+
+	// Compiles a "then" block.
+	statement();
+
+	int jumpElseAddress = emitJump(OP_JUMP);
+
+	// Back-patches the jump offset for `OP_JUMP_IF_FALSE` (above).
+	patchJump(jumpIfFalseAddress);
+
+	// If we take the "else" branch, pop the condition expression off the stack.
+	emitByte(OP_POP);
+
+	// Compiles an "else" block.
+	if (match(TOKEN_ELSE))
+	{
+		statement();
+	}
+
+	// Patches the unconditional jump's offset, above, so that control flow skips
+	// the "else" block if the "then" block was taken.
+	patchJump(jumpElseAddress);
+}
+
 static void printStatement()
 {
 	// Compiles the expression that follows the `print` token.
@@ -848,16 +923,24 @@ static void statement()
 
 	if (match(TOKEN_PRINT))
 	{
+		// A print statement.
 		printStatement();
+	}
+	else if (match(TOKEN_IF))
+	{
+		// An "if" statement.
+		ifStatement();
 	}
 	else if (match(TOKEN_LEFT_BRACE))
 	{
+		// A block of one or more statements.
 		beginScope();
 		block();
 		endScope();
 	}
 	else
 	{
+		// An expression that drops its stack result.
 		expressionStatement();
 	}
 }

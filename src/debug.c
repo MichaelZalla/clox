@@ -15,6 +15,7 @@ void disassembleChunk(Chunk *chunk, const char *name)
 
 // Forward declarations.
 static int byteInstruction(const char *name, Chunk *chunk, int offset);
+static int jumpInstruction(const char *name, int didJump, Chunk *chunk, int offset);
 
 int disassembleInstruction(Chunk *chunk, int offset)
 {
@@ -75,6 +76,10 @@ int disassembleInstruction(Chunk *chunk, int offset)
 		return simpleInstruction("OP_NEGATE", offset);
 	case OP_PRINT:
 		return simpleInstruction("OP_PRINT", offset);
+	case OP_JUMP:
+		return jumpInstruction("OP_JUMP", 1, chunk, offset);
+	case OP_JUMP_IF_FALSE:
+		return jumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
 	case OP_RETURN:
 		return simpleInstruction("OP_RETURN", offset);
 	default:
@@ -99,6 +104,22 @@ static int byteInstruction(const char *name, Chunk *chunk, int offset)
 	printf("%-16s %4d\n", name, slot);
 
 	return offset + 2; // A two-byte instruction (`[OP_*] [index]`).
+}
+
+static int jumpInstruction(const char *name, int didJump, Chunk *chunk, int offset)
+{
+	// Reads the jump offset.
+
+	uint8_t highOffsetBits = chunk->code[offset + 1];
+	uint8_t lowOffsetBits = chunk->code[offset + 2];
+
+	uint16_t jumpOffset = ((uint16_t)highOffsetBits << 8) | (uint16_t)lowOffsetBits;
+
+	int destination = offset + 3 + didJump * jumpOffset;
+
+	printf("%-16s %4d -> %d\n", name, offset, destination);
+
+	return offset + 3; // Next instruction.
 }
 
 int constantInstruction(const char *name, Chunk *chunk, int offset)

@@ -26,6 +26,8 @@ typedef enum
 	OP_NEGATE,				// Unary negate.
 	OP_NOT,						// Unary not.
 	OP_PRINT,					// Prints to stdout.
+	OP_JUMP,					// Unconditional jump forward.
+	OP_JUMP_IF_FALSE, // Jump if false.
 	OP_RETURN,				// Return from the current function.
 } OpCode;
 
