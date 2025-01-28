@@ -21,7 +21,11 @@ static void concatenate();
 
 void resetStack()
 {
+	// Clears the VM's value stack.
 	vm.stackTop = vm.stack;
+
+	// Clears the VM's frame stack.
+	vm.frameCount = 0;
 }
 
 static void runtimeError(const char *format, ...)
@@ -35,11 +39,14 @@ static void runtimeError(const char *format, ...)
 	fputs("\n", stderr);
 
 	// Note that the interpreter advances past an instruction before executing it,
-	// meaning that `vm.ip` will, at this point, point to the instruction after
+	// meaning that `ip` will, at this point, point to the instruction _after_
 	// the instruction that triggered this runtime error.
-	size_t instruction = vm.ip - vm.chunk->code - 1;
 
-	int line = vm.chunk->lines[instruction];
+	CallFrame *frame = &vm.frames[vm.frameCount - 1];
+
+	size_t instruction = frame->ip - frame->function->chunk.code - 1;
+
+	int line = frame->function->chunk.lines[instruction];
 
 	fprintf(stderr, "[line %d] in script\n", line);
 
@@ -66,35 +73,45 @@ void freeVM()
 
 InterpretResult interpret(const char *source)
 {
-	Chunk chunk;
+	ObjFunction *function = compile(source);
 
-	initChunk(&chunk);
-
-	if (!compile(source, &chunk))
+	if (function == NULL)
 	{
-		freeChunk(&chunk);
-
 		return INTERPRET_COMPILER_ERROR;
 	}
 
-	vm.chunk = &chunk;
+	// The first slot in our Value stack always holds the top-level "function".
+	push(OBJ_VAL((Obj *)function));
 
-	vm.ip = vm.chunk->code;
+	// Prepares a call frame to invoke the top-level "main()" function.
+	CallFrame *frame = &vm.frames[vm.frameCount++];
 
-	InterpretResult result = run();
+	// Function pointer.
+	frame->function = function;
 
-	freeChunk(&chunk);
+	// IP begins at the start of the function's compiled body.
+	frame->ip = function->chunk.code;
 
-	return result;
+	// Function can begin allocating locals at the start of the VM's value stack.
+	frame->slots = vm.stack;
+
+	return run();
 }
 
 static InterpretResult run()
 {
-#define READ_BYTE() (*vm.ip++)
-#define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+	CallFrame *frame = &vm.frames[vm.frameCount - 1];
+
+#define READ_BYTE() (*(frame->ip++))
+
 #define READ_SHORT() \
-	(vm.ip += 2, (uint16_t)((vm.ip[-2] << 8) | vm.ip[-1]))
+	(frame->ip += 2,   \
+	 (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
+
+#define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
+
 #define READ_STRING() AS_STRING(READ_CONSTANT())
+
 #define BINARY_OP(valueType, op)                    \
 	do                                                \
 	{                                                 \
@@ -125,7 +142,9 @@ static InterpretResult run()
 		printf("\n");
 
 		// Prints the instruction.
-		disassembleInstruction(vm.chunk, (int)(vm.ip - vm.chunk->code));
+		Chunk *chunk = &frame->function->chunk;
+
+		disassembleInstruction(chunk, (int)(frame->ip - chunk->code));
 #endif
 		uint8_t instruction;
 
@@ -156,11 +175,11 @@ static InterpretResult run()
 
 		case OP_GET_LOCAL:
 		{
-			// Takes a single byte operand (representing a `locals[]` stack index).
-			uint8_t slot = READ_BYTE();
+			// Takes a byte operand, representing a (frame-relative) stack slot.
+			uint8_t relativeIndex = READ_BYTE();
 
 			// Uses it to look up the local's current value (somewhere on the stack).
-			Value currentValue = vm.stack[slot];
+			Value currentValue = frame->slots[relativeIndex];
 
 			// Copies the local's current value to the top of the stack, for use.
 			push(currentValue);
@@ -170,12 +189,12 @@ static InterpretResult run()
 
 		case OP_SET_LOCAL:
 		{
-			// Takes a single byte operand (representing a `locals[]` stack index).
-			uint8_t slot = READ_BYTE();
+			// Takes a byte operand, representing a (frame-relative) stack slot.
+			uint8_t relativeIndex = READ_BYTE();
 
 			// Writes a new value to that `locals[]` stack slot, using the top value
 			// on the stack.
-			vm.stack[slot] = peek(0);
+			frame->slots[relativeIndex] = peek(0);
 
 			// Note: We don't pop this value from the top of the stack, because an
 			// assignment is an expression in Lox—and all expressions should produce
@@ -346,7 +365,7 @@ static InterpretResult run()
 		{
 			uint16_t jumpOffset = READ_SHORT();
 
-			vm.ip += jumpOffset;
+			frame->ip += jumpOffset;
 
 			break;
 		}
@@ -357,7 +376,7 @@ static InterpretResult run()
 
 			if (isFalsey(peek(0)))
 			{
-				vm.ip += jumpOffset;
+				frame->ip += jumpOffset;
 			}
 
 			break;
@@ -367,7 +386,7 @@ static InterpretResult run()
 		{
 			uint16_t jumpOffset = READ_SHORT();
 
-			vm.ip -= jumpOffset;
+			frame->ip -= jumpOffset;
 
 			break;
 		}
