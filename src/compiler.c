@@ -60,6 +60,9 @@ typedef enum
 
 typedef struct
 {
+	// References the Compiler associated with this compiler's enclosing function.
+	struct Compiler *enclosing;
+
 	ObjFunction *function;
 	FunctionType type;
 
@@ -282,7 +285,21 @@ static void initCompiler(Compiler *compiler, FunctionType type)
 	// More GC paranoia.
 	compiler->function = newFunction();
 
-	current = compiler;
+	// Grows the compiler stack, updating `current` (i.e., head).
+	compiler->enclosing = (struct Compiler *)current;
+	current = (Compiler *)compiler;
+
+	if (type != TYPE_SCRIPT)
+	{
+		// Function objects are runtime values, so they can outlive the source code;
+		// token lexemes point into the source code, so their references are bound
+		// to the lifetime of the source code (bytes). We're careful to copy the
+		// function name's original name, to the heap (as an ObjString).
+
+		current->function->name = copyString(
+				parser.previousToken.start,
+				parser.previousToken.length);
+	}
 
 	// Reserves this compiler's first slot in `locals[]` for its own internal use.
 	Local *local = &current->locals[current->localCount];
@@ -308,6 +325,8 @@ static ObjFunction *endCompiler()
 		disassembleChunk(currentChunk(), isScript ? "<script>" : function->name->chars);
 	}
 #endif
+
+	current = (Compiler *)current->enclosing;
 
 	return function;
 }
@@ -338,6 +357,7 @@ static void statement();
 static void declaration();
 static ParseRule *getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
+static void function(FunctionType type);
 
 static uint8_t identifierConstant(Token *name)
 {
@@ -467,6 +487,14 @@ static uint8_t parseVariable(const char *errorMessage)
 
 static void markInitialized()
 {
+	if (current->scopeDepth == 0)
+	{
+		// If we're initializing a function name at the top level of a script, then
+		// we aren't declaring a local—and, therefore, we have no "depth" to update.
+
+		return;
+	}
+
 	Local *lastDeclaredLocal = &current->locals[current->localCount - 1];
 
 	lastDeclaredLocal->depth = current->scopeDepth;
@@ -859,12 +887,85 @@ static void expression()
 
 static void block()
 {
+	// A left brace has already been consumed (in `statement()` or `function()`).
+
 	while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF))
 	{
 		declaration();
 	}
 
 	consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+}
+
+static void functionDeclaration()
+{
+	// Functions are first-class values in Lox, and a function declaration simply
+	// creates and stores one in a newly declared variable.
+
+	// Parses the function's name, just like any other variable declaration.
+	uint8_t globalFunctionName = parseVariable("Expect function name.");
+
+	// Immediately marks the function's identifier as initialized, as this will
+	// allow a user to refer to it from inside the function's own body (i.e.,
+	// permits a recursive function definition).
+	markInitialized();
+
+	function(TYPE_FUNCTION);
+
+	defineVariable(globalFunctionName);
+}
+
+static void function(FunctionType type)
+{
+	// Creates a separate Compiler, on the C stack, for the function currently
+	// being compiled; as we compile the function body, all new bytecode will be
+	// emitted into the Chunk owned by the ObjFunction owned by this Compiler.
+	Compiler compiler;
+
+	// Sets `compiler` as our `current` compiler.
+	initCompiler(&compiler, type);
+	beginScope();
+
+	// Parses the function's parameters, enclosed in parentheses.
+
+	consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+
+	if (!check(TOKEN_RIGHT_PAREN))
+	{
+		do
+		{
+			// Counts the new parameter in arity.
+			current->function->arity += 1;
+
+			// Range check.
+			if (current->function->arity > 255)
+			{
+				errorAtCurrent("Function has more than 255 parameters.");
+			}
+
+			// A function parameter is simply a local variable declared in the outer-
+			// most lexical scope of the function body; for function declarations,
+			// there are no parameter initializers (or default values) in Lox—so
+			// these will be initialized later, as part of function calls.
+
+			uint8_t parameter = parseVariable("Expect parameter name.");
+
+			defineVariable(parameter);
+		} while (match(TOKEN_COMMA));
+	}
+
+	consume(TOKEN_RIGHT_PAREN, "Expect ')' after function parameters.");
+
+	// Parses the function body (block).
+	consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+	block();
+
+	// Yields the new ObjFunction from `compile()`.
+	ObjFunction *function = endCompiler();
+
+	// Stores the compiled ObjFunction in the _surrounding_ function's constants
+	// table (i.e., `compiler.enclosing->function->chunk->constants`).
+	emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL((Obj *)function)));
 }
 
 static void variableDeclaration()
@@ -1135,7 +1236,11 @@ static void synchronize()
 
 static void declaration()
 {
-	if (match(TOKEN_VAR))
+	if (match(TOKEN_FUN))
+	{
+		functionDeclaration();
+	}
+	else if (match(TOKEN_VAR))
 	{
 		variableDeclaration();
 	}
