@@ -119,6 +119,15 @@ ObjString *copyString(const char *chars, int length)
 
 static void printFunction(ObjFunction *function)
 {
+	// Internal "main()" function; may be printed if DEBUG_TRACE_EXECUTION is
+	// enabled and prints the entire Value stack.
+	if (function->name == NULL)
+	{
+		printf("<script>");
+		return;
+	}
+
+	// User-defined function.
 	printf("<fn %s>", function->name->chars);
 }
 
