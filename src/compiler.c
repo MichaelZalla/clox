@@ -1201,6 +1201,30 @@ static void printStatement()
 	emitByte(OP_PRINT);
 }
 
+static void returnStatement()
+{
+	if (current->type == TYPE_SCRIPT)
+	{
+		error("Can't return from top-level code.");
+	}
+
+	if (match(TOKEN_SEMICOLON))
+	{
+		// If no explicit return value was given, implicitly return `nil`.
+		emitReturn();
+
+		return;
+	}
+
+	// Compiles the expression that follows the `return` token.
+	expression();
+
+	// Consumes the semicolon terminating the return statement.
+	consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
+
+	emitByte(OP_RETURN);
+}
+
 static void whileStatement()
 {
 	// Record where this "while" statement begins in the bytecode.
@@ -1315,6 +1339,11 @@ static void statement()
 	{
 		// An "if" statement.
 		ifStatement();
+	}
+	else if (match(TOKEN_RETURN))
+	{
+		// A "return" statement.
+		returnStatement();
 	}
 	else if (match(TOKEN_WHILE))
 	{
