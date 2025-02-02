@@ -1,6 +1,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "common.h"
 #include "debug.h"
@@ -12,6 +13,11 @@
 #include "compiler.h"
 
 VM vm;
+
+static Value clockNative(int argCount, Value *args)
+{
+	return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+}
 
 // Forward declarations.
 static InterpretResult run();
@@ -74,6 +80,23 @@ static void runtimeError(const char *format, ...)
 	resetStack();
 }
 
+static void defineNative(const char *name, NativeFn function)
+{
+	// Registers a new string identifier for the native function; we temporarily
+	// keep the resulting Value on the stack, to avoid accidental GC.
+	push(OBJ_VAL((Obj *)copyString(name, (int)strlen(name))));
+
+	// Creates a `Value` enclosing the new `ObjNative`; we temporarily keep the
+	// resulting Value on the stack, to avoid accidental GC.
+	push(OBJ_VAL((Obj *)newNative(function)));
+
+	tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+
+	// Frees temporaries.
+	pop();
+	pop();
+}
+
 void initVM()
 {
 	resetStack();
@@ -82,6 +105,8 @@ void initVM()
 
 	initTable(&vm.strings);
 	initTable(&vm.globals);
+
+	defineNative("clock", clockNative);
 }
 
 void freeVM()
@@ -515,6 +540,22 @@ static bool callValue(Value callee, int argCount)
 		{
 		case OBJ_FUNCTION:
 			return call(AS_FUNCTION(callee), argCount);
+		case OBJ_NATIVE:
+		{
+			NativeFn native = AS_NATIVE(callee);
+
+			// Invokes the native function wrapper, retrieving a result.
+			Value result = native(argCount, vm.stackTop - argCount);
+
+			// Unwinds the VM's stack, dropping the call arguments; we add 1 to
+			// account for the ObjClosure value being dropped.
+			vm.stackTop -= argCount + 1;
+
+			// Pushes the result back onto the stack.
+			push(result);
+
+			return true;
+		}
 		default:
 			break; // A non-callable object type.
 		}
