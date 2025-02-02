@@ -29,6 +29,7 @@ typedef enum
 	OP_JUMP,					// Unconditional jump forward.
 	OP_JUMP_IF_FALSE, // Jump if false.
 	OP_LOOP,					// Unconditional jump backward.
+	OP_CALL,					// Calls into a new frame.
 	OP_RETURN,				// Return from the current function.
 } OpCode;
 

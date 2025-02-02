@@ -226,6 +226,7 @@ static int emitJump(uint8_t instruction)
 
 static void emitReturn()
 {
+	emitByte(OP_NIL);
 	emitByte(OP_RETURN);
 }
 
@@ -521,6 +522,32 @@ static void defineVariable(uint8_t globalVarConstantIndex)
 	emitBytes(OP_DEFINE_GLOBAL, globalVarConstantIndex);
 }
 
+static uint8_t argumentList()
+{
+	uint8_t argCount = 0;
+
+	// Compiles (and counts) any arguments passed between the pair of parentheses.
+	if (!check(TOKEN_RIGHT_PAREN))
+	{
+		do
+		{
+			expression();
+
+			// Checks limit.
+			if (argCount == 255)
+			{
+				error("Encountered more than 255 arguments.");
+			}
+
+			argCount += 1;
+		} while (match(TOKEN_COMMA));
+	}
+
+	consume(TOKEN_RIGHT_PAREN, "Expected ')' after arguments.");
+
+	return argCount;
+}
+
 static void and_(bool canAssign)
 {
 	// The logical `and` operator strings together multiple expressions, and
@@ -612,6 +639,14 @@ static void binary(bool canAssign)
 		// Unreachable.
 		return;
 	}
+}
+
+static void call(bool canAssign)
+{
+	// Compiles any arguments being passed in this call.
+	uint8_t argCount = argumentList();
+
+	emitBytes(OP_CALL, argCount);
 }
 
 static void literal(bool canAssign)
@@ -772,7 +807,7 @@ static void unary(bool canAssign)
 
 // Pratt parser table.
 ParseRule rules[] = {
-		[TOKEN_LEFT_PAREN] = {grouping, NULL, PREC_NONE},
+		[TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
 		[TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
 		[TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
 		[TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},

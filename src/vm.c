@@ -16,6 +16,8 @@ VM vm;
 // Forward declarations.
 static InterpretResult run();
 static Value peek(int distance);
+static bool call(ObjFunction *function, int argCount);
+static bool callValue(Value callee, int argCount);
 static bool isFalsey(Value value);
 static void concatenate();
 
@@ -38,17 +40,36 @@ static void runtimeError(const char *format, ...)
 
 	fputs("\n", stderr);
 
-	// Note that the interpreter advances past an instruction before executing it,
-	// meaning that `ip` will, at this point, point to the instruction _after_
-	// the instruction that triggered this runtime error.
+	// Walks the call stack from top (most recent) to bottom (least recent),
+	// printing the corresponding function name as well as the line (in source)
+	// associated with the bytecode pointed to by the frame's instruction pointer.
 
-	CallFrame *frame = &vm.frames[vm.frameCount - 1];
+	for (int i = vm.frameCount - 1; i >= 0; i--)
+	{
+		CallFrame *frame = &vm.frames[i];
 
-	size_t instruction = frame->ip - frame->function->chunk.code - 1;
+		ObjFunction *function = frame->function;
 
-	int line = frame->function->chunk.lines[instruction];
+		// Computes the index of the bytecode instruction pointed to by IP.
 
-	fprintf(stderr, "[line %d] in script\n", line);
+		// Note that the interpreter advances past an instruction before executing
+		// it, meaning that `ip` will, at this point, point to the instruction
+		// _after_ the instruction that triggered this runtime error.
+		size_t instructionIndex = frame->ip - function->chunk.code - 1;
+
+		// Prints line number.
+		fprintf(stderr, "[line %d] in ", function->chunk.lines[instructionIndex]);
+
+		// Prints function identifier.
+		if (function->name == NULL)
+		{
+			fprintf(stderr, "script\n");
+		}
+		else
+		{
+			fprintf(stderr, "%s()\n", function->name->chars);
+		}
+	}
 
 	resetStack();
 }
@@ -84,16 +105,7 @@ InterpretResult interpret(const char *source)
 	push(OBJ_VAL((Obj *)function));
 
 	// Prepares a call frame to invoke the top-level "main()" function.
-	CallFrame *frame = &vm.frames[vm.frameCount++];
-
-	// Function pointer.
-	frame->function = function;
-
-	// IP begins at the start of the function's compiled body.
-	frame->ip = function->chunk.code;
-
-	// Function can begin allocating locals at the start of the VM's value stack.
-	frame->slots = vm.stack;
+	call(function, 0);
 
 	return run();
 }
@@ -391,10 +403,49 @@ static InterpretResult run()
 			break;
 		}
 
+		case OP_CALL:
+		{
+			int argCount = READ_BYTE();
+
+			if (!callValue(peek(argCount), argCount))
+			{
+				// Aborts the interpreter.
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			// Advances the cached `frame` pointer to the newly pushed call frame.
+			frame = &vm.frames[vm.frameCount - 1];
+
+			break;
+		}
+
 		case OP_RETURN:
 		{
-			// Exit the interpreter.
-			return INTERPRET_OK;
+			// Holds on to the current call's return value.
+			Value result = pop();
+
+			// Frees the current call frame.
+			vm.frameCount -= 1;
+
+			if (vm.frameCount == 0)
+			{
+				// Clears the VM's stack, removing the top-level function Value.
+				pop();
+
+				// Exits the interpreter.
+				return INTERPRET_OK;
+			}
+
+			// Pops the current call frame's storage slice off the VM's stack.
+			vm.stackTop = frame->slots;
+
+			// Returns the return value back onto the stack.
+			push(result);
+
+			// Updates the `run()` function's cached frame pointer.
+			frame = &vm.frames[vm.frameCount - 1];
+
+			break;
 		}
 		}
 	}
@@ -421,6 +472,57 @@ Value pop()
 static Value peek(int distance)
 {
 	return vm.stackTop[-1 - distance];
+}
+
+static bool call(ObjFunction *function, int argCount)
+{
+	// Validates argument count.
+	if (argCount != function->arity)
+	{
+		runtimeError("Expected %d arguments but got %d.", function->arity, argCount);
+
+		return false;
+	}
+
+	// Checks for frame stack overflow.
+	if (vm.frameCount == FRAMES_MAX)
+	{
+		runtimeError("Stack overflow.");
+
+		return false;
+	}
+
+	// Prepares a call frame to invoke the callee.
+	CallFrame *frame = &vm.frames[vm.frameCount++];
+
+	// Function pointer.
+	frame->function = function;
+
+	// Instruction pointer begins at the start of the function's compiled body.
+	frame->ip = function->chunk.code;
+
+	// Positions the frame's `locals[]` stack to align with the callee Value.
+	frame->slots = vm.stackTop - argCount - 1;
+
+	return true;
+}
+
+static bool callValue(Value callee, int argCount)
+{
+	if (IS_OBJ(callee))
+	{
+		switch (OBJ_TYPE(callee))
+		{
+		case OBJ_FUNCTION:
+			return call(AS_FUNCTION(callee), argCount);
+		default:
+			break; // A non-callable object type.
+		}
+	}
+
+	runtimeError("Can only call functions and classes.");
+
+	return false;
 }
 
 static bool isFalsey(Value value)
