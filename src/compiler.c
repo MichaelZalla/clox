@@ -1000,7 +1000,9 @@ static void function(FunctionType type)
 
 	// Stores the compiled ObjFunction in the _surrounding_ function's constants
 	// table (i.e., `compiler.enclosing->function->chunk->constants`).
-	emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(function)));
+
+	// Note: Emits an `OP_CLOSURE` opcode rather than an `OP_CONSTANT` here.
+	emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
 }
 
 static void variableDeclaration()

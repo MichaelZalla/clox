@@ -22,7 +22,7 @@ static Value clockNative(int argCount, Value *args)
 // Forward declarations.
 static InterpretResult run();
 static Value peek(int distance);
-static bool call(ObjFunction *function, int argCount);
+static bool call(ObjClosure *closure, int argCount);
 static bool callValue(Value callee, int argCount);
 static bool isFalsey(Value value);
 static void concatenate();
@@ -54,7 +54,7 @@ static void runtimeError(const char *format, ...)
 	{
 		CallFrame *frame = &vm.frames[i];
 
-		ObjFunction *function = frame->function;
+		ObjFunction *function = frame->closure->function;
 
 		// Computes the index of the bytecode instruction pointed to by IP.
 
@@ -127,10 +127,22 @@ InterpretResult interpret(const char *source)
 	}
 
 	// The first slot in our Value stack always holds the top-level "function".
+
+	// Makes sure that our GC is aware of this heap-allocated function, even
+	// before it is referenced by an ObjClosure (that replaces it on the stack).
 	push(OBJ_VAL(function));
 
-	// Prepares a call frame to invoke the top-level "main()" function.
-	call(function, 0);
+	// Replaces the ObjFunction Value occupying the start of the Value stack.
+	ObjClosure *closure = newClosure(function);
+
+	// Yeah, it's weird.
+	pop();
+
+	// The closure finally sits at the start of the VM's Value stack.
+	push(OBJ_VAL(closure));
+
+	// Prepares a call frame to invoke the top-level "main()" closure.
+	call(closure, 0);
 
 	return run();
 }
@@ -145,7 +157,7 @@ static InterpretResult run()
 	(frame->ip += 2,   \
 	 (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
 
-#define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
+#define READ_CONSTANT() (frame->closure->function->chunk.constants.values[READ_BYTE()])
 
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 
@@ -179,7 +191,7 @@ static InterpretResult run()
 		printf("\n");
 
 		// Prints the instruction.
-		Chunk *chunk = &frame->function->chunk;
+		Chunk *chunk = &frame->closure->function->chunk;
 
 		disassembleInstruction(chunk, (int)(frame->ip - chunk->code));
 #endif
@@ -444,6 +456,22 @@ static InterpretResult run()
 			break;
 		}
 
+		case OP_CLOSURE:
+		{
+			// Reads a constant index from the stack, and uses it to retrieve the
+			// ObjFunction (Value) from the current call frame's function's constant
+			// table.
+			ObjFunction *function = AS_FUNCTION(READ_CONSTANT());
+
+			// Produces a new closure that uses this constant function definition.
+			ObjClosure *closure = newClosure(function);
+
+			// Leaves the closure on the stack.
+			push(OBJ_VAL(closure));
+
+			break;
+		}
+
 		case OP_RETURN:
 		{
 			// Holds on to the current call's return value.
@@ -499,12 +527,12 @@ static Value peek(int distance)
 	return vm.stackTop[-1 - distance];
 }
 
-static bool call(ObjFunction *function, int argCount)
+static bool call(ObjClosure *closure, int argCount)
 {
 	// Validates argument count.
-	if (argCount != function->arity)
+	if (argCount != closure->function->arity)
 	{
-		runtimeError("Expected %d arguments but got %d.", function->arity, argCount);
+		runtimeError("Expected %d arguments but got %d.", closure->function->arity, argCount);
 
 		return false;
 	}
@@ -521,10 +549,10 @@ static bool call(ObjFunction *function, int argCount)
 	CallFrame *frame = &vm.frames[vm.frameCount++];
 
 	// Function pointer.
-	frame->function = function;
+	frame->closure = closure;
 
 	// Instruction pointer begins at the start of the function's compiled body.
-	frame->ip = function->chunk.code;
+	frame->ip = closure->function->chunk.code;
 
 	// Positions the frame's `locals[]` stack to align with the callee Value.
 	frame->slots = vm.stackTop - argCount - 1;
@@ -538,8 +566,8 @@ static bool callValue(Value callee, int argCount)
 	{
 		switch (OBJ_TYPE(callee))
 		{
-		case OBJ_FUNCTION:
-			return call(AS_FUNCTION(callee), argCount);
+		case OBJ_CLOSURE:
+			return call(AS_CLOSURE(callee), argCount);
 		case OBJ_NATIVE:
 		{
 			NativeFn native = AS_NATIVE(callee);

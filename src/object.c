@@ -60,6 +60,15 @@ uint32_t hashString(const char *key, int length)
 	return hash;
 }
 
+ObjClosure *newClosure(ObjFunction *function)
+{
+	ObjClosure *closure = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
+
+	closure->function = function;
+
+	return closure;
+}
+
 ObjFunction *newFunction()
 {
 	ObjFunction *function = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
@@ -144,6 +153,13 @@ void printObject(Value value)
 {
 	switch (OBJ_TYPE(value))
 	{
+	case OBJ_CLOSURE:
+	{
+		ObjClosure *closure = AS_CLOSURE(value);
+
+		printFunction(closure->function);
+		break;
+	}
 	case OBJ_FUNCTION:
 		printFunction(AS_FUNCTION(value));
 		break;

@@ -12,9 +12,9 @@
 
 typedef struct
 {
-	ObjFunction *function; // Used to look up constants, etc, in this fn's chunk.
-	uint8_t *ip;					 // IP / counter for a particular function invocation.
-	Value *slots;					 // A slice of the running program's Value stack.
+	ObjClosure *closure; // Used to look up constants, etc, in this fn's chunk.
+	uint8_t *ip;				 // IP / counter for a particular function invocation.
+	Value *slots;				 // A slice of the running program's Value stack.
 } CallFrame;
 
 typedef struct

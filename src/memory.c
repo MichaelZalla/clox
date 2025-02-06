@@ -26,6 +26,14 @@ static void freeObject(Obj *object)
 {
 	switch (object->type)
 	{
+	case OBJ_CLOSURE:
+	{
+		// Note that we don't free the closure's ObjFunction, which may be shared.
+
+		FREE(ObjClosure, object);
+
+		break;
+	}
 	case OBJ_FUNCTION:
 	{
 		ObjFunction *function = (ObjFunction *)object;
