@@ -5,25 +5,12 @@ C17 implementation of the Lox programming language from Robert Nystrom's _"[Craf
 ## Building
 
 ```bash
-# Build binary.
-/usr/bin/gcc \
-    -Wall `# Report all warnings.` \
-    -fcolor-diagnostics `# Enable colors in diagnostics.` \
-    -g `# Generate source-level debug information.` \
-	src/main.c `# Report all warnings.` \
-    -o ./build/debug/arm64-apple-darwin/main `# Output`
+# Builds clox.
+make clox
 
-# Generate assembly.
-gcc \
-	-g `# Generate source-level debug information.` \
-	-c `# Only run preprocess, compile, and assemble steps.` \
-	-o build/debug/arm64-apple-darwin/main.o `# Output` \
-	src/main.c
+# Generates assembly (main.c only).
+make clox.o:
 
-# Generate disassembly.
-objdump \
-	-d `# Disassemble.` \
-	-M intel `# Emit Intel-style disassembly.` \
-	-S build/debug/arm64-apple-darwin/main.o `# Output` \
-		> build/debug/arm64-apple-darwin/main.s
+# Generates disassembly (main.c only).
+make clox.s
 ```
