@@ -84,11 +84,11 @@ static void defineNative(const char *name, NativeFn function)
 {
 	// Registers a new string identifier for the native function; we temporarily
 	// keep the resulting Value on the stack, to avoid accidental GC.
-	push(OBJ_VAL((Obj *)copyString(name, (int)strlen(name))));
+	push(OBJ_VAL(copyString(name, (int)strlen(name))));
 
 	// Creates a `Value` enclosing the new `ObjNative`; we temporarily keep the
 	// resulting Value on the stack, to avoid accidental GC.
-	push(OBJ_VAL((Obj *)newNative(function)));
+	push(OBJ_VAL(newNative(function)));
 
 	tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
 
@@ -127,7 +127,7 @@ InterpretResult interpret(const char *source)
 	}
 
 	// The first slot in our Value stack always holds the top-level "function".
-	push(OBJ_VAL((Obj *)function));
+	push(OBJ_VAL(function));
 
 	// Prepares a call frame to invoke the top-level "main()" function.
 	call(function, 0);
@@ -587,5 +587,5 @@ static void concatenate()
 
 	ObjString *result = takeString(chars, length);
 
-	push(OBJ_VAL((Obj *)result));
+	push(OBJ_VAL(result));
 }

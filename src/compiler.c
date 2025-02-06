@@ -365,7 +365,7 @@ static uint8_t identifierConstant(Token *name)
 	// Produces an ObjString from the identifier token's lexeme.
 	ObjString *identifierString = copyString(name->start, name->length);
 
-	Value value = OBJ_VAL((Obj *)identifierString);
+	Value value = OBJ_VAL(identifierString);
 
 	// Inserts the Value (string) into the chunk's constants table.
 	return makeConstant(value);
@@ -1000,7 +1000,7 @@ static void function(FunctionType type)
 
 	// Stores the compiled ObjFunction in the _surrounding_ function's constants
 	// table (i.e., `compiler.enclosing->function->chunk->constants`).
-	emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL((Obj *)function)));
+	emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(function)));
 }
 
 static void variableDeclaration()
