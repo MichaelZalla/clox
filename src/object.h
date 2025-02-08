@@ -34,11 +34,13 @@ struct Obj
 
 typedef struct
 {
-  Obj obj;         // Functions are first-class objects in Lox, so we need to be
-                   // able to pass them around on the stack.
-  int arity;       // The number of parameters to the function.
-  Chunk chunk;     // Function body's bytecode.
-  ObjString *name; // For human-readable runtime errors.
+  Obj obj;          // Functions are first-class objects in Lox, so we need to be
+                    // able to pass them around on the stack.
+  int arity;        // The number of parameters to the function.
+  Chunk chunk;      // Function body's bytecode.
+  ObjString *name;  // For human-readable runtime errors.
+  int upvalueCount; // Stores the function body's (static) upvalue count.
+                    // We store it in `Function` so as to read it at runtime.
 } ObjFunction;
 
 typedef Value (*NativeFn)(int argCount, Value *args);

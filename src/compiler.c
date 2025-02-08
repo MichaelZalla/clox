@@ -60,6 +60,13 @@ typedef enum
 
 typedef struct
 {
+	uint8_t index; // Stores the closed-over variable's index (slot) in the
+								 // current compiler's locals.
+	bool isLocal;
+} Upvalue;
+
+typedef struct
+{
 	// References the Compiler associated with this compiler's enclosing function.
 	struct Compiler *enclosing;
 
@@ -69,6 +76,9 @@ typedef struct
 	Local locals[UINT8_COUNT];
 	int localCount;
 	int scopeDepth;
+
+	// The upvalues array is stored in `Compiler` as it is not needed at runtime.
+	Upvalue upvalues[UINT8_COUNT];
 } Compiler;
 
 Parser parser;
@@ -405,6 +415,87 @@ static int resolveLocal(Compiler *compiler, Token *name)
 	return -1;
 }
 
+static int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal)
+{
+	int upvalueCount = compiler->function->upvalueCount;
+
+	// Checks to see whether the function we're compiling already has an upvalue
+	// that closes over this identifier (variable).
+	for (int i = 0; i < upvalueCount; i++)
+	{
+		Upvalue *upvalue = &compiler->upvalues[i];
+
+		if (upvalue->index == index && upvalue->isLocal == isLocal)
+		{
+			// Re-uses the existing upvalue (index).
+
+			return i;
+		}
+	}
+
+	// Ensures we don't go over this function's upvalue limit.
+	if (upvalueCount == UINT8_COUNT)
+	{
+		error("Too many closure variables in function.");
+
+		return 0;
+	}
+
+	// Adds a new upvalue to the current compiler's `upvalues` stack.
+	Upvalue *upvalue = &compiler->upvalues[upvalueCount];
+
+	upvalue->index = index;
+	upvalue->isLocal = isLocal;
+
+	// Returns the index of the newly created upvalue.
+
+	// Note: This index will be used by the `OP_GET_UPVALUE` and `OP_SET_UPVALUE`
+	// instructions at runtime.
+	return compiler->function->upvalueCount++;
+}
+
+static int resolveUpvalue(Compiler *compiler, Token *token)
+{
+	// Verifies that are aren't trying to resolve an upvalue in the global scope.
+	if (compiler->enclosing == NULL)
+	{
+		return -1;
+	}
+
+	// Checks to see whether this identifier is declared as a local in the
+	// immediately enclosing function.
+	int enclosingLocalIndex = resolveLocal((Compiler *)compiler->enclosing, token);
+
+	// Base case: If this token refers to an immediately enclosing local, then
+	// we're capturing that local inside this closure.
+	if (enclosingLocalIndex != -1)
+	{
+		return addUpvalue(compiler, (uint8_t)enclosingLocalIndex, true);
+	}
+
+	// Recursive case: If the token refers to a local in some _higher_ enclosing
+	// scope, then we're capturing that higher local in this closure; traverse
+	// up the chain of compilers, hoping we hit our base case.
+	int upvalueIndex = resolveUpvalue((Compiler *)compiler->enclosing, token);
+
+	if (upvalueIndex != -1)
+	{
+		// Adds an upvalue to the _intervening_ function that sits between the
+		// outermost function (where the local was declared) and the current
+		// _enclosing_ function (which we know _not_ to contain that declaration).
+		return addUpvalue(compiler, upvalueIndex, false);
+	}
+
+	// Otherwise, we haven't found our base case, and must treat this identifier
+	// as a reference to a global variable.
+
+	// Note: Because we need to support runtime resolution of local (or captured)
+	// variable references at runtime, this precludes us from detecting undeclared
+	// global variable references at compile-time. Therefore, we optimistically
+	// assume these unresolved local references to be "hopefully global".
+	return -1;
+}
+
 static void addLocal(Token name)
 {
 	// Bounds check.
@@ -737,27 +828,36 @@ static void namedVariable(Token name, bool canAssign)
 {
 	uint8_t getOp, setOp;
 
-	// Tries to find a local variable with the given name.
+	// Tries to find a local variable in the current function (being compiled).
 	int arg = resolveLocal(current, &name);
 
 	if (arg != -1)
 	{
-		// A local variable with this name was found.
+		// "args" is now a `locals` slot index.
 
 		getOp = OP_GET_LOCAL;
 		setOp = OP_SET_LOCAL;
 	}
+	// Tries to find a local variable in an _enclosing_ function (Compiler).
+	else if ((arg = resolveUpvalue(current, &name)) != -1)
+	{
+		// "args" is now an upvalue index (into the _enclosing_ function).
+
+		getOp = OP_GET_UPVALUE;
+		setOp = OP_SET_UPVALUE;
+	}
 	else
 	{
-		// Assume `name` to be a global identifier.
-
-		// In this case, `arg` represents an index into the current chunk's constant
-		// table, representing this global variable's identifier (name).
+		// "args" is now an index into the current chunk's constants table; the
+		// given constant is a string identifier for some global runtime variable.
 		arg = identifierConstant(&name);
 
 		getOp = OP_GET_GLOBAL;
 		setOp = OP_SET_GLOBAL;
 	}
+
+	// By now, the named identifier either references a local variable, a captured
+	// upvalue (transitive closure), or a global runtime variable.
 
 	if (canAssign && match(TOKEN_EQUAL))
 	{
@@ -1001,8 +1101,18 @@ static void function(FunctionType type)
 	// Stores the compiled ObjFunction in the _surrounding_ function's constants
 	// table (i.e., `compiler.enclosing->function->chunk->constants`).
 
-	// Note: Emits an `OP_CLOSURE` opcode rather than an `OP_CONSTANT` here.
+	// Emits a variable-length `OP_CLOSURE` instruction rather than `OP_CONSTANT`;
+	// each upvalue captured by the closure contributes 2 bytes.
 	emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+
+	for (int i = 0; i < function->upvalueCount; i++)
+	{
+		// Single byte to indicate this upvalue's type.
+		emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
+
+		// Single byte for the local slot index or upvalue slot index.
+		emitByte(compiler.upvalues[i].index);
+	}
 }
 
 static void variableDeclaration()

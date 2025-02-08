@@ -16,6 +16,8 @@ typedef enum
 	OP_GET_GLOBAL,		// Global read.
 	OP_DEFINE_GLOBAL, // Global declaration.
 	OP_SET_GLOBAL,		// Global assignment.
+	OP_GET_UPVALUE,		// Read from a higher (non-global) lexical scope.
+	OP_SET_UPVALUE,		// Write to a higher (non-global) lexical scope.
 	OP_EQUAL,					// Comparison.
 	OP_GREATER,				// Comparison.
 	OP_LESS,					// Comparison.
