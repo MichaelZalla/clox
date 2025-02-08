@@ -24,6 +24,7 @@ typedef enum
   OBJ_FUNCTION,
   OBJ_NATIVE,
   OBJ_STRING,
+  OBJ_UPVALUE,
 } ObjType;
 
 struct Obj
@@ -62,7 +63,17 @@ struct ObjString
 typedef struct
 {
   Obj obj;
+  Value *location; // Points to the closed-over variable; when we assign to the
+                   // variable (in the closure) that the closure captures, we
+                   // are writing to the original `Value`, and not a copy.
+} ObjUpvalue;
+
+typedef struct
+{
+  Obj obj;
   ObjFunction *function;
+  ObjUpvalue **upvalues;
+  int upvalueCount; // Redundant here, but necessary for proper GC.
 } ObjClosure;
 
 ObjClosure *newClosure(ObjFunction *function);
@@ -70,6 +81,7 @@ ObjFunction *newFunction();
 ObjNative *newNative(NativeFn function);
 ObjString *takeString(char *chars, int length);
 ObjString *copyString(const char *start, int length);
+ObjUpvalue *newUpvalue(Value *slot);
 void printObject(Value value);
 
 static inline bool isObjType(Value value, ObjType type)

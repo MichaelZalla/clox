@@ -62,9 +62,24 @@ uint32_t hashString(const char *key, int length)
 
 ObjClosure *newClosure(ObjFunction *function)
 {
+	// Allocates a dynamic array of (dynamically allocated) upvalue _pointers_.
+	ObjUpvalue **upvalues = ALLOCATE(ObjUpvalue *, function->upvalueCount);
+
+	// Zeroes pointers.
+	for (int i = 0; i < function->upvalueCount; i++)
+	{
+		upvalues[i] = NULL;
+	}
+
+	// Note: Allocating and zeroing the memory for upvalues above, before
+	// this memory belongs to the ObjClosure itself, is ceremony for the GC.
+
 	ObjClosure *closure = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
 
 	closure->function = function;
+
+	closure->upvalues = upvalues;
+	closure->upvalueCount = function->upvalueCount;
 
 	return closure;
 }
@@ -136,6 +151,15 @@ ObjString *copyString(const char *chars, int length)
 	return allocateString(heapChars, length, hash);
 }
 
+ObjUpvalue *newUpvalue(Value *slot)
+{
+	ObjUpvalue *upvalue = ALLOCATE_OBJ(ObjUpvalue, OBJ_UPVALUE);
+
+	upvalue->location = slot;
+
+	return upvalue;
+}
+
 static void printFunction(ObjFunction *function)
 {
 	// Internal "main()" function; may be printed if DEBUG_TRACE_EXECUTION is
@@ -169,6 +193,11 @@ void printObject(Value value)
 		break;
 	case OBJ_STRING:
 		printf("%s", AS_CSTRING(value));
+		break;
+	case OBJ_UPVALUE:
+		// Note: Upvalue objects aren't first-class objects in Lox, and so a Lox
+		// user can't actually "print" one—but this will keep the C compiler happy.
+		printf("upvalue");
 		break;
 	}
 }

@@ -24,6 +24,7 @@ static InterpretResult run();
 static Value peek(int distance);
 static bool call(ObjClosure *closure, int argCount);
 static bool callValue(Value callee, int argCount);
+static ObjUpvalue *captureUpvalue(Value *local);
 static bool isFalsey(Value value);
 static void concatenate();
 
@@ -325,6 +326,30 @@ static InterpretResult run()
 			break;
 		}
 
+		case OP_GET_UPVALUE:
+		{
+			uint8_t upvalueSlot = READ_BYTE();
+
+			// Looks up the corresponding Upvalue in the current function (closure),
+			// dereferencing the pointer to the Value that it points at; the resulting
+			// Value is pushed to the stack.
+			push(*frame->closure->upvalues[upvalueSlot]->location);
+
+			break;
+		}
+
+		case OP_SET_UPVALUE:
+		{
+			uint8_t upvalueSlot = READ_BYTE();
+
+			// Deferences the upvalue's Value pointer, copying the stack's top Value
+			// to the defererenced memory (note that the address of `location` here
+			// remains unchanged).
+			*frame->closure->upvalues[upvalueSlot]->location = peek(0);
+
+			break;
+		}
+
 		case OP_EQUAL:
 		{
 			Value b = pop();
@@ -469,6 +494,32 @@ static InterpretResult run()
 			// Leaves the closure on the stack.
 			push(OBJ_VAL(closure));
 
+			// Initializes the closure's array of `ObjUpvalue` pointers.
+			for (int i = 0; i < closure->function->upvalueCount; i++)
+			{
+				uint8_t isLocal = READ_BYTE();
+				uint8_t index = READ_BYTE();
+
+				if (isLocal)
+				{
+					// This upvalue captures a local declared in the enclosing function.
+
+					// We need to grab a pointer to the captured local's slot in the
+					// surrounding function's Value-stack window.
+
+					Value *localValue = frame->slots + index;
+
+					closure->upvalues[i] = captureUpvalue(localValue);
+				}
+				else
+				{
+					// This upvalue captures a local declared in a higher function. The
+					// _current closure_ that stores the referenced upvalue is contained
+					// in the _current call frame_.
+					closure->upvalues[i] = frame->closure->upvalues[index];
+				}
+			}
+
 			break;
 		}
 
@@ -592,6 +643,14 @@ static bool callValue(Value callee, int argCount)
 	runtimeError("Can only call functions and classes.");
 
 	return false;
+}
+
+static ObjUpvalue *captureUpvalue(Value *local)
+{
+	// Creates a new ObjUpvalue that "captures" the given Value stack slot.
+	ObjUpvalue *createdUpvalue = newUpvalue(local);
+
+	return createdUpvalue;
 }
 
 static bool isFalsey(Value value)

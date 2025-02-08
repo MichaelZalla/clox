@@ -28,6 +28,13 @@ static void freeObject(Obj *object)
 	{
 	case OBJ_CLOSURE:
 	{
+		ObjClosure *closure = (ObjClosure *)object;
+
+		// Frees this closure's dynamic array of upvalue pointers; note that. here,
+		// we don't free the _upvalues_ themselves.
+
+		FREE_ARRAY(ObjUpvalue *, closure->upvalues, closure->upvalueCount);
+
 		// Note that we don't free the closure's ObjFunction, which may be shared.
 
 		FREE(ObjClosure, object);
@@ -59,6 +66,15 @@ static void freeObject(Obj *object)
 		FREE_ARRAY(char, string->chars, string->length + 1);
 
 		FREE(ObjString, object);
+
+		break;
+	}
+	case OBJ_UPVALUE:
+	{
+		// Note that we don't free the upvalue's referenced Value variable, which
+		// may be shared.
+
+		FREE(ObjUpvalue, object);
 
 		break;
 	}
