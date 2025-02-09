@@ -50,6 +50,7 @@ typedef struct
 {
 	Token name; // Stores a copy of the Token struct for the identifier.
 	int depth;
+	bool isCaptured;
 } Local;
 
 typedef enum
@@ -318,6 +319,7 @@ static void initCompiler(Compiler *compiler, FunctionType type)
 	current->localCount += 1;
 
 	local->depth = 0;
+	local->isCaptured = false;
 	local->name.start = ""; // Empty name prevents users from referencing it.
 	local->name.length = 0;
 }
@@ -344,18 +346,31 @@ static ObjFunction *endCompiler()
 
 static void beginScope()
 {
+	// Entering a block, or a "for" loop.
+
 	current->scopeDepth += 1;
 }
 
 static void endScope()
 {
+	// Exiting a block, or a "for" loop.
+
 	current->scopeDepth -= 1;
 
-	// Rolls back the "locals" stack, "freeing" any locals in this scope.
-	while (current->localCount > 0 && current->locals[current->localCount - 1].depth > current->scopeDepth)
+	// Rolls back the "locals" stack, dropping any locals in this block's scope.
+	while (
+			current->localCount > 0 &&
+			current->locals[current->localCount - 1].depth > current->scopeDepth)
 	{
-		// Relinquishes this local's slot on the VM's runtime stack.
-		emitByte(OP_POP);
+		// Relinquishes this local's slot on the VM's Value stack.
+		if (current->locals[current->localCount - 1].isCaptured)
+		{
+			emitByte(OP_CLOSE_UPVALUE);
+		}
+		else
+		{
+			emitByte(OP_POP);
+		}
 
 		// Relinquishes this local's position in the compiler's "locals" stack.
 		current->localCount -= 1;
@@ -470,6 +485,10 @@ static int resolveUpvalue(Compiler *compiler, Token *token)
 	// we're capturing that local inside this closure.
 	if (enclosingLocalIndex != -1)
 	{
+		Compiler *enclosing = (Compiler *)compiler->enclosing;
+
+		enclosing->locals[enclosingLocalIndex].isCaptured = true;
+
 		return addUpvalue(compiler, (uint8_t)enclosingLocalIndex, true);
 	}
 
@@ -514,6 +533,7 @@ static void addLocal(Token name)
 
 	local->name = name;
 	local->depth = -1; // Sentinel.
+	local->isCaptured = false;
 }
 
 static void declareVariable()

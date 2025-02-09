@@ -26,6 +26,7 @@ typedef struct
 	Table strings;
 	Table globals;
 	Obj *objects;
+	ObjUpvalue *openUpvalues;
 } VM;
 
 typedef enum

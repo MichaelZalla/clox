@@ -63,9 +63,20 @@ struct ObjString
 typedef struct
 {
   Obj obj;
-  Value *location; // Points to the closed-over variable; when we assign to the
-                   // variable (in the closure) that the closure captures, we
-                   // are writing to the original `Value`, and not a copy.
+  // Points to the closed-over variable; when we assign to the variable (in the
+  // closure) that the closure captures, we are writing to the original `Value`,
+  // and not a copy.
+  Value *location;
+
+  // Indicates that this upvalue's variable is relocated to the heap.
+  Value closed;
+
+  // Intrusive linked list; each open upvalue points to the next open upvalue
+  // that references a local variable further down the stack. When compiling one
+  // or more closures inside the body of some function, we can quickly find any
+  // upvalue that has already been allocated for some given local variable. The
+  // VM holds a pointer to the head of this list at all times.
+  struct ObjUpvalue *next;
 } ObjUpvalue;
 
 typedef struct

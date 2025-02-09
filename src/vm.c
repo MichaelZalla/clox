@@ -25,6 +25,7 @@ static Value peek(int distance);
 static bool call(ObjClosure *closure, int argCount);
 static bool callValue(Value callee, int argCount);
 static ObjUpvalue *captureUpvalue(Value *local);
+static void closeUpvalue(Value *lastLocation);
 static bool isFalsey(Value value);
 static void concatenate();
 
@@ -35,6 +36,9 @@ void resetStack()
 
 	// Clears the VM's frame stack.
 	vm.frameCount = 0;
+
+	// An empty stack means no upvalues referencing stack slots.
+	vm.openUpvalues = NULL;
 }
 
 static void runtimeError(const char *format, ...)
@@ -523,10 +527,25 @@ static InterpretResult run()
 			break;
 		}
 
+		case OP_CLOSE_UPVALUE:
+		{
+			// Copies this local's Value to its unique, heap-allocated upvalue object.
+			closeUpvalue(vm.stackTop - 1);
+
+			// Pops this local off the top of the stack, letting it go out of scope.
+			pop();
+
+			break;
+		}
+
 		case OP_RETURN:
 		{
 			// Holds on to the current call's return value.
 			Value result = pop();
+
+			// Closes any open upvalues that point to locals declared in this
+			// function's top-level lexical scope (including call arguments).
+			closeUpvalue(frame->slots);
 
 			// Frees the current call frame.
 			vm.frameCount -= 1;
@@ -647,10 +666,67 @@ static bool callValue(Value callee, int argCount)
 
 static ObjUpvalue *captureUpvalue(Value *local)
 {
+	// Walks the list of open upvalues that point to locals on the stack.
+
+	ObjUpvalue *previousUpvalue = NULL;
+	ObjUpvalue *currentUpvalue = vm.openUpvalues;
+
+	while (currentUpvalue != NULL && currentUpvalue->location > local)
+	{
+		previousUpvalue = currentUpvalue;
+		currentUpvalue = (ObjUpvalue *)currentUpvalue->next;
+	}
+
+	if (currentUpvalue != NULL && currentUpvalue->location == local)
+	{
+		// We've found an existing open upvalue referencing the same stack local.
+
+		return currentUpvalue;
+	}
+
+	// We've run out of open upvalues to consider for re-use, or our current up-
+	// value points to a stack slot that is _below_ the one we're interested in.
+
 	// Creates a new ObjUpvalue that "captures" the given Value stack slot.
+
 	ObjUpvalue *createdUpvalue = newUpvalue(local);
 
+	// We need to insert the newly created open upvalue _before_ the object
+	// pointed at by `currentUpvalue` (which may possibly be null).
+
+	createdUpvalue->next = (struct ObjUpvalue *)currentUpvalue;
+
+	if (previousUpvalue == NULL)
+	{
+		vm.openUpvalues = createdUpvalue;
+	}
+	else
+	{
+		previousUpvalue->next = (struct ObjUpvalue *)createdUpvalue;
+	}
+
 	return createdUpvalue;
+}
+
+static void closeUpvalue(Value *lastLocation)
+{
+	// Closes all upvalues on the VM's Value stack that reference a local whose
+	// stack slot is greater or equal to `lastLocation`.
+
+	while (vm.openUpvalues != NULL && vm.openUpvalues->location >= lastLocation)
+	{
+		// Points to the most recently allocated open upvalue (highest on stack).
+		ObjUpvalue *upvalue = vm.openUpvalues;
+
+		// Writes the Value stored at `upvalue->location` into `upvalue.closed`.
+		upvalue->closed = *upvalue->location;
+
+		// Updates `location` to point to the upvalue struct's own `closed` field.
+		upvalue->location = &upvalue->closed;
+
+		// Removes this no-longer-open upvalue from the `openUpvalues` list.
+		vm.openUpvalues = (ObjUpvalue *)vm.openUpvalues->next;
+	}
 }
 
 static bool isFalsey(Value value)
