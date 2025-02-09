@@ -25,6 +25,38 @@ static Obj *allocateObject(size_t size, ObjType type)
 
 	vm.objects = object;
 
+#ifdef DEBUG_LOG_GC
+	printf("%p allocate %zu for ", (void *)object, size);
+	switch (type)
+	{
+	case OBJ_CLOSURE:
+	{
+		printf("closure\n");
+		break;
+	}
+	case OBJ_FUNCTION:
+	{
+		printf("function\n");
+		break;
+	}
+	case OBJ_NATIVE:
+	{
+		printf("native\n");
+		break;
+	}
+	case OBJ_STRING:
+	{
+		printf("string\n");
+		break;
+	}
+	case OBJ_UPVALUE:
+	{
+		printf("upvalue\n");
+		break;
+	}
+	}
+#endif
+
 	return object;
 }
 
