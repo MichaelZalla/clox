@@ -9,6 +9,9 @@
 #include "debug.h"
 #endif
 
+// Forward declarations.
+static void markRoots();
+
 void *reallocate(void *pointer, size_t oldSize, size_t newSize)
 {
 	if (newSize > oldSize)
@@ -34,11 +37,37 @@ void *reallocate(void *pointer, size_t oldSize, size_t newSize)
 	return result;
 }
 
+void markObject(Obj *object)
+{
+	if (object == NULL)
+	{
+		return;
+	}
+
+#ifdef DEBUG_LOG_GC
+	printf("%p mark ", (void *)object);
+	printValue(OBJ_VAL(object));
+	printf("\n");
+#endif
+
+	object->isMarked = true;
+}
+
+void markValue(Value value)
+{
+	if (IS_OBJ(value))
+	{
+		markObject(AS_OBJ(value));
+	}
+}
+
 void collectGarbage()
 {
 #ifdef DEBUG_LOG_GC
 	printf("-- gc begin\n");
 #endif
+
+	markRoots();
 
 #ifdef DEBUG_LOG_GC
 	printf("-- gc end\n");
@@ -148,4 +177,31 @@ void freeObjects()
 
 		object = next;
 	}
+}
+
+static void markRoots()
+{
+	// Marks all (Object-type) Values on the value stack.
+	for (Value *valueSlot = vm.stack; valueSlot < vm.stackTop; valueSlot++)
+	{
+		markValue(*valueSlot);
+	}
+
+	// Marks each call frame's associated closure object.
+	for (int i = 0; i < vm.frameCount; i++)
+	{
+		markObject((Obj *)vm.frames[i].closure);
+	}
+
+	// Marks all open upvalues that the VM can directly reach.
+	for (ObjUpvalue *upvalue = vm.openUpvalues; upvalue != NULL; upvalue = (ObjUpvalue *)upvalue->next)
+	{
+		markObject((Obj *)upvalue);
+	}
+
+	// Marks all global Values and their string keys.
+	markTable(&vm.globals);
+
+	// Marks all objects in memory that were allocated by any compilers.
+	markCompilerRoots();
 }

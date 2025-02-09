@@ -18,11 +18,12 @@ static Obj *allocateObject(size_t size, ObjType type)
 	// allocating an `Obj` large enough to "hold" an `ObjString` of some length.
 	Obj *object = (Obj *)reallocate(NULL, 0, size);
 
-	// Initializes fields.
+	// Initializes object fields.
 	object->type = type;
-
+	object->isMarked = false;
 	object->next = vm.objects;
 
+	// Updates the head pointer for the VM's `objects` list.
 	vm.objects = object;
 
 #ifdef DEBUG_LOG_GC
