@@ -11,6 +11,7 @@
 
 // Forward declarations.
 static void markRoots();
+static void traceReferences();
 
 void *reallocate(void *pointer, size_t oldSize, size_t newSize)
 {
@@ -44,6 +45,11 @@ void markObject(Obj *object)
 		return;
 	}
 
+	if (object->isMarked)
+	{
+		return;
+	}
+
 #ifdef DEBUG_LOG_GC
 	printf("%p mark ", (void *)object);
 	printValue(OBJ_VAL(object));
@@ -51,6 +57,21 @@ void markObject(Obj *object)
 #endif
 
 	object->isMarked = true;
+
+	if (vm.grayCapacity < vm.grayCount + 1)
+	{
+		vm.grayCapacity = NEXT_CAPACITY(vm.grayCapacity);
+
+		vm.grayStack = (Obj **)realloc(vm.grayStack, sizeof(Obj *) * vm.grayCapacity);
+
+		// Terminates if we failed to resize through `realloc()`.
+		if (vm.grayStack == NULL)
+		{
+			exit(1);
+		}
+	}
+
+	vm.grayStack[vm.grayCount++] = object;
 }
 
 void markValue(Value value)
@@ -61,6 +82,69 @@ void markValue(Value value)
 	}
 }
 
+static void markArray(ValueArray *array)
+{
+	for (int i = 0; i < array->count; i++)
+	{
+		markValue(array->values[i]);
+	}
+}
+
+static void blackenObject(Obj *object)
+{
+#ifdef DEBUG_LOG_GC
+	printf("%p blacken ", (void *)object);
+	printValue(OBJ_VAL(object));
+	printf("\n");
+#endif
+
+	// By definition, a "black" object is any object whose `isMarked` flag is set
+	// and which isn't still sitting in the VM's `grayStack`.
+
+	switch (object->type)
+	{
+	case OBJ_UPVALUE:
+	{
+		// A closed upvalue holds a reference to its closed-over Value on the heap.
+		markValue(((ObjUpvalue *)object)->closed);
+
+		break;
+	}
+	case OBJ_FUNCTION:
+	{
+		ObjFunction *function = (ObjFunction *)object;
+
+		// A function holds a reference to a heap-allocated ObjString (`name`).
+		markObject((Obj *)function->name);
+
+		// A function's Chunk holds a heap-allocated `constants` table.
+		markArray(&function->chunk.constants);
+
+		break;
+	}
+	case OBJ_CLOSURE:
+	{
+		ObjClosure *closure = (ObjClosure *)object;
+
+		// A closure holds a reference to its associated ObjFunction.
+		markObject((Obj *)closure->function);
+
+		// A closure holds a linked list of ObjUpvalue pointers.
+		for (int i = 0; i < closure->upvalueCount; i++)
+		{
+			markObject((Obj *)closure->upvalues[i]);
+		}
+
+		break;
+	}
+	case OBJ_NATIVE:
+		/* falls through */
+	case OBJ_STRING:
+		// No outgoing references.
+		break;
+	}
+}
+
 void collectGarbage()
 {
 #ifdef DEBUG_LOG_GC
@@ -68,6 +152,8 @@ void collectGarbage()
 #endif
 
 	markRoots();
+
+	traceReferences();
 
 #ifdef DEBUG_LOG_GC
 	printf("-- gc end\n");
@@ -177,6 +263,8 @@ void freeObjects()
 
 		object = next;
 	}
+
+	free(vm.grayStack);
 }
 
 static void markRoots()
@@ -204,4 +292,24 @@ static void markRoots()
 
 	// Marks all objects in memory that were allocated by any compilers.
 	markCompilerRoots();
+}
+
+static void traceReferences()
+{
+	// Traverses the VM's gray-marked Object list and blackens each item; with
+	// each item that we visit, we may encounter references to white objects that
+	// must be marked gray, and added to this list.
+
+	// The call to `traceReferences()` terminates when no unvisited items remain
+	// in `vm.grayStack`.
+
+	while (vm.grayCount > 0)
+	{
+		Obj *object = vm.grayStack[--vm.grayCount];
+
+		blackenObject(object);
+	}
+
+	// At this point, every object on the heap is either "black" or "white";
+	// whatever is still "white" is unreachable memory that we can reclaim.
 }
