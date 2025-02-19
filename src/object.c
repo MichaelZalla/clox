@@ -71,9 +71,15 @@ static ObjString *allocateString(char *chars, int length, uint32_t hash)
 	string->chars = chars;
 	string->hash = hash;
 
+	// Ensures that the string is reachable by the GC before we try writing it to
+	// the hash table—which may trigger a table resize, i.e., a reallocation.
+	push(OBJ_VAL(string));
+
 	// Make sure this string is represented in our set of interned strings.
 	// [string key : nil value]
 	tableSet(&vm.strings, string, NIL_VAL);
+
+	pop();
 
 	return string;
 }

@@ -744,8 +744,12 @@ static bool isFalsey(Value value)
 
 static void concatenate()
 {
-	ObjString *b = AS_STRING(pop());
-	ObjString *a = AS_STRING(pop());
+	// Avoids popping either string Value from the Value stack, as we want both
+	// strings to be reachable0 by the GC, in the event that either `ALLOCATE()`
+	// or `takeString()` lead to GC being triggered.
+
+	ObjString *b = AS_STRING(peek(0));
+	ObjString *a = AS_STRING(peek(1));
 
 	int length = a->length + b->length;
 
@@ -757,6 +761,9 @@ static void concatenate()
 	chars[length] = '\0';
 
 	ObjString *result = takeString(chars, length);
+
+	pop();
+	pop();
 
 	push(OBJ_VAL(result));
 }

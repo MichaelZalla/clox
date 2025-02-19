@@ -3,6 +3,7 @@
 #include "chunk.h"
 #include "memory.h"
 #include "value.h"
+#include "vm.h"
 
 void initChunk(Chunk *chunk)
 {
@@ -43,7 +44,12 @@ void writeChunk(Chunk *chunk, uint8_t opcodeOrOperand, int line)
 
 int addConstant(Chunk *chunk, Value value)
 {
+	// Ensures that the Value is reachable by the GC before we try to allocate.
+	push(value);
+
 	writeValueArray(&chunk->constants, value);
+
+	pop();
 
 	// Returns the new constant's index in the `ValueArray`.
 	return chunk->constants.count - 1;
