@@ -106,6 +106,10 @@ void initVM()
 {
 	resetStack();
 
+	vm.bytesAllocated = 0;
+
+	vm.nextGC = 1024 * 1024; // Avoids a few GC runs on very small starting heaps.
+
 	vm.objects = NULL;
 
 	vm.grayCount = 0;

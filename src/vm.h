@@ -25,6 +25,8 @@ typedef struct
 	Value *stackTop;
 	Table strings;
 	Table globals;
+	size_t bytesAllocated; // A running total of bytes allocated by the VM.
+	size_t nextGC;				 // The heap size threshold that triggers the next GC.
 	Obj *objects;
 	ObjUpvalue *openUpvalues;
 	int grayCount;
