@@ -12,6 +12,7 @@
 // Forward declarations.
 static void markRoots();
 static void traceReferences();
+static void sweep();
 
 void *reallocate(void *pointer, size_t oldSize, size_t newSize)
 {
@@ -151,9 +152,18 @@ void collectGarbage()
 	printf("-- gc begin\n");
 #endif
 
+	// Marks all immediately reachable heap-allocated Objects as "gray".
 	markRoots();
 
+	// Processes each "gray"-marked Object—marking it as "black"—while also
+	// marking as "gray" any new Objects that are reachable through it.
 	traceReferences();
+
+	// Prunes the `strings` table for entries that reference unreachable strings.
+	tableRemoveWhite(&vm.strings);
+
+	// Traverses the VM's Object-list, looking for any "white" objects to reclaim.
+	sweep();
 
 #ifdef DEBUG_LOG_GC
 	printf("-- gc end\n");
@@ -312,4 +322,46 @@ static void traceReferences()
 
 	// At this point, every object on the heap is either "black" or "white";
 	// whatever is still "white" is unreachable memory that we can reclaim.
+}
+
+static void sweep()
+{
+	Obj *previousObject = NULL;
+	Obj *currentObject = vm.objects;
+
+	// Traverses the VM's Object list, removing and deallocating any Object marked
+	// as "white", i.e., that does not have its `isMarked` flag set.
+
+	while (currentObject != NULL)
+	{
+		// Checks if the object was marked this GC cycle, via `traceReferences()`.
+		if (currentObject->isMarked)
+		{
+			// Resets the reachable object's `isMarked` flag for the next GC trace.
+			currentObject->isMarked = false;
+
+			// Continues forward.
+			previousObject = currentObject;
+
+			currentObject = currentObject->next;
+		}
+		else
+		{
+			// Prunes the object from the Objects list, and free its memory.
+			Obj *unreachableObject = currentObject;
+
+			currentObject = currentObject->next;
+
+			if (previousObject == NULL)
+			{
+				vm.objects = currentObject;
+			}
+			else
+			{
+				previousObject->next = currentObject;
+			}
+
+			freeObject(unreachableObject);
+		}
+	}
 }

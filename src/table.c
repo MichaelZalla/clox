@@ -223,6 +223,20 @@ ObjString *tableFindString(Table *table, const char *chars, int length, uint32_t
 	}
 }
 
+void tableRemoveWhite(Table *table)
+{
+	for (int i = 0; i < table->count; i++)
+	{
+		Entry *entry = &table->entries[i];
+
+		if (entry->key != NULL && !entry->key->obj.isMarked)
+		{
+			// Note that `tableDelete()` leaves the table's `count` unchanged.
+			tableDelete(table, entry->key);
+		}
+	}
+}
+
 void markTable(Table *table)
 {
 	// Iterates through entries and marks their key and value.
