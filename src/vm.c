@@ -578,6 +578,19 @@ static InterpretResult run()
 
 			break;
 		}
+		case OP_CLASS:
+		{
+			// Reads the string (value) stored in the current chunk's constant table,
+			// at the index given by the byte that follows OP_CLASS.
+			ObjString *className = READ_STRING();
+
+			ObjClass *class = newClass(className);
+
+			// Produces a new Value wrapping an ObjClass on the Value stack.
+			push(OBJ_VAL(class));
+
+			break;
+		}
 		}
 	}
 

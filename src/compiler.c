@@ -1136,6 +1136,27 @@ static void function(FunctionType type)
 	}
 }
 
+static void classDeclaration()
+{
+	consume(TOKEN_IDENTIFIER, "Expect class name.");
+
+	// Returns a class name as a new index in the current chunk's constants table.
+	uint8_t classNameConstantIndex = identifierConstant(&parser.previousToken);
+
+	// Declares the class variable, using the same name (token), before the body.
+	declareVariable();
+
+	// Creates the new class object at runtime, beginning a new body definition.
+	emitBytes(OP_CLASS, classNameConstantIndex);
+
+	// Marks the class variable as "defined", so that we may refer to it from
+	// within its own class body (useful for class factory methods, for example).
+	defineVariable(classNameConstantIndex);
+
+	consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+	consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+}
+
 static void variableDeclaration()
 {
 	// Declares a new global or local variable, compiling its initializer
@@ -1428,7 +1449,11 @@ static void synchronize()
 
 static void declaration()
 {
-	if (match(TOKEN_FUN))
+	if (match(TOKEN_CLASS))
+	{
+		classDeclaration();
+	}
+	else if (match(TOKEN_FUN))
 	{
 		functionDeclaration();
 	}

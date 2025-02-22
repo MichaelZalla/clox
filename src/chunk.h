@@ -35,6 +35,7 @@ typedef enum
 	OP_CLOSURE,				// Similar to OP_CONSTANT but with special runtime handling.
 	OP_CLOSE_UPVALUE, // Moves a stack-allocated Value to the heap.
 	OP_RETURN,				// Return from the current function.
+	OP_CLASS,					// Begins a new class body.
 } OpCode;
 
 typedef struct
