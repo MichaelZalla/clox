@@ -761,6 +761,34 @@ static void call(bool canAssign)
 	emitBytes(OP_CALL, argCount);
 }
 
+static void dot(bool canAssign)
+{
+	consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
+
+	// Loads the referenced field name as a string into the constants table,
+	// so that it can be accessed at runtime.
+	uint8_t fieldNameConstantIndex = identifierConstant(&parser.previousToken);
+
+	// If `canAssign` is `false` when the field is followed by an `=` operator,
+	// `dot()` will ignore the `=` and allow the syntax error to bubble up to
+	// `parsePrecedence()` which will report the compile-time error.
+	if (canAssign && match(TOKEN_EQUAL))
+	{
+		// A "set" expression assigning to the instance's field.
+
+		// Compiles the right-hand-side expression.
+		expression();
+
+		emitBytes(OP_SET_PROPERTY, fieldNameConstantIndex);
+	}
+	else
+	{
+		// A "get" expression reading from the instance's field.
+
+		emitBytes(OP_GET_PROPERTY, fieldNameConstantIndex);
+	}
+}
+
 static void literal(bool canAssign)
 {
 	switch (parser.previousToken.type)
@@ -933,7 +961,7 @@ ParseRule rules[] = {
 		[TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
 		[TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
 		[TOKEN_COMMA] = {NULL, NULL, PREC_NONE},
-		[TOKEN_DOT] = {NULL, NULL, PREC_NONE},
+		[TOKEN_DOT] = {NULL, dot, PREC_CALL},
 
 		[TOKEN_MINUS] = {unary, binary, PREC_TERM},
 		[TOKEN_PLUS] = {NULL, binary, PREC_TERM},

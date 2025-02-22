@@ -362,6 +362,60 @@ static InterpretResult run()
 			break;
 		}
 
+		case OP_GET_PROPERTY:
+		{
+			if (!IS_INSTANCE(peek(0)))
+			{
+				runtimeError("Only instances have properties.");
+
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			ObjInstance *instance = AS_INSTANCE(peek(0));
+
+			ObjString *fieldName = READ_STRING();
+
+			Value value;
+
+			if (tableGet(&instance->fields, fieldName, &value))
+			{
+				// Replaces the `ObjInstance` value on the stack with the field value.
+				pop();
+				push(value);
+				break;
+			}
+
+			runtimeError("Undefined property '%s'.", fieldName->chars);
+
+			return INTERPRET_RUNTIME_ERROR;
+		}
+
+		case OP_SET_PROPERTY:
+		{
+			if (!IS_INSTANCE(peek(1)))
+			{
+				runtimeError("Only instances have properties.");
+
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			ObjInstance *instance = AS_INSTANCE(peek(1));
+
+			ObjString *fieldName = READ_STRING();
+
+			tableSet(&instance->fields, fieldName, peek(0));
+
+			// A setter is itself an expression whose result is the assigned value.
+
+			// Drops the ObjInstance value from the stack, leaving the assigned value.
+
+			Value value = pop();
+			pop();
+			push(value);
+
+			break;
+		}
+
 		case OP_EQUAL:
 		{
 			Value b = pop();

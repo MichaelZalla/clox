@@ -18,6 +18,8 @@ typedef enum
 	OP_SET_GLOBAL,		// Global assignment.
 	OP_GET_UPVALUE,		// Read from a higher (non-global) lexical scope.
 	OP_SET_UPVALUE,		// Write to a higher (non-global) lexical scope.
+	OP_GET_PROPERTY,	// Produces a value from an instance's field.
+	OP_SET_PROPERTY,	// Assigns a value to an instance's field.
 	OP_EQUAL,					// Comparison.
 	OP_GREATER,				// Comparison.
 	OP_LESS,					// Comparison.
