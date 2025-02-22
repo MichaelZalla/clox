@@ -30,6 +30,11 @@ static Obj *allocateObject(size_t size, ObjType type)
 	printf("%p allocate %zu for ", (void *)object, size);
 	switch (type)
 	{
+	case OBJ_CLASS:
+	{
+		printf("class\n");
+		break;
+	}
 	case OBJ_CLOSURE:
 	{
 		printf("closure\n");
@@ -59,6 +64,17 @@ static Obj *allocateObject(size_t size, ObjType type)
 #endif
 
 	return object;
+}
+
+ObjClass *newClass(ObjString *name)
+{
+	// Allocates a new `ObjClass` on the heap.
+
+	ObjClass *class = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
+
+	class->name = name;
+
+	return class;
 }
 
 static ObjString *allocateString(char *chars, int length, uint32_t hash)
@@ -219,6 +235,14 @@ void printObject(Value value)
 {
 	switch (OBJ_TYPE(value))
 	{
+	case OBJ_CLASS:
+	{
+		ObjClass *class = AS_CLASS(value);
+
+		printf("%s", class->name->chars);
+
+		break;
+	}
 	case OBJ_CLOSURE:
 	{
 		ObjClosure *closure = AS_CLOSURE(value);

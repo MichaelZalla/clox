@@ -132,6 +132,15 @@ static void blackenObject(Obj *object)
 
 		break;
 	}
+	case OBJ_CLASS:
+	{
+		ObjClass *class = (ObjClass *)object;
+
+		// A class holds a reference to a heap-allocated ObjString (`name`).
+		markObject((Obj *)class->name);
+
+		break;
+	}
 	case OBJ_CLOSURE:
 	{
 		ObjClosure *closure = (ObjClosure *)object;
@@ -195,6 +204,11 @@ static void freeObject(Obj *object)
 	printf("%p free type ", (void *)object);
 	switch (object->type)
 	{
+	case OBJ_CLASS:
+	{
+		printf("class\n");
+		break;
+	}
 	case OBJ_CLOSURE:
 	{
 		printf("closure\n");
@@ -225,6 +239,15 @@ static void freeObject(Obj *object)
 
 	switch (object->type)
 	{
+	case OBJ_CLASS:
+	{
+		ObjClass *class = (ObjClass *)object;
+
+		// Frees the ObjClass, without freeing its name string.
+		FREE(ObjClass, class);
+
+		break;
+	}
 	case OBJ_CLOSURE:
 	{
 		ObjClosure *closure = (ObjClosure *)object;
