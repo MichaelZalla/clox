@@ -132,6 +132,16 @@ static void blackenObject(Obj *object)
 
 		break;
 	}
+	case OBJ_INSTANCE:
+	{
+		ObjInstance *instance = (ObjInstance *)object;
+
+		markObject((Obj *)instance->class);
+
+		markTable(&instance->fields);
+
+		break;
+	}
 	case OBJ_CLASS:
 	{
 		ObjClass *class = (ObjClass *)object;
@@ -219,6 +229,11 @@ static void freeObject(Obj *object)
 		printf("function\n");
 		break;
 	}
+	case OBJ_INSTANCE:
+	{
+		printf("instance\n");
+		break;
+	}
 	case OBJ_NATIVE:
 	{
 		printf("native\n");
@@ -241,10 +256,10 @@ static void freeObject(Obj *object)
 	{
 	case OBJ_CLASS:
 	{
-		ObjClass *class = (ObjClass *)object;
+		// ObjClass *class = (ObjClass *)object;
 
 		// Frees the ObjClass, without freeing its name string.
-		FREE(ObjClass, class);
+		FREE(ObjClass, object);
 
 		break;
 	}
@@ -272,6 +287,18 @@ static void freeObject(Obj *object)
 		// Note: We allow GC to free the function's (ObjString) name.
 
 		FREE(ObjFunction, object);
+
+		break;
+	}
+	case OBJ_INSTANCE:
+	{
+		ObjInstance *instance = (ObjInstance *)object;
+
+		// Frees the table's Value entries, but not heap-allocated objects that
+		// those Value entries may have pointed to; the GC handles their lifetimes.
+		freeTable(&instance->fields);
+
+		FREE(ObjInstance, object);
 
 		break;
 	}

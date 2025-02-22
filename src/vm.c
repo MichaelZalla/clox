@@ -657,6 +657,18 @@ static bool callValue(Value callee, int argCount)
 	{
 		switch (OBJ_TYPE(callee))
 		{
+		case OBJ_CLASS:
+		{
+			// Constructor call.
+			ObjClass *class = AS_CLASS(callee);
+
+			// For now, we'll ignore any arguments passed to the constructor call.
+			vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(class));
+
+			return true;
+
+			break;
+		}
 		case OBJ_CLOSURE:
 			return call(AS_CLOSURE(callee), argCount);
 		case OBJ_NATIVE:

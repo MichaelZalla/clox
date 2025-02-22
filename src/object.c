@@ -45,6 +45,11 @@ static Obj *allocateObject(size_t size, ObjType type)
 		printf("function\n");
 		break;
 	}
+	case OBJ_INSTANCE:
+	{
+		printf("instance\n");
+		break;
+	}
 	case OBJ_NATIVE:
 	{
 		printf("native\n");
@@ -152,6 +157,17 @@ ObjFunction *newFunction()
 	return function;
 }
 
+ObjInstance *newInstance(ObjClass *class)
+{
+	ObjInstance *instance = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
+
+	instance->class = class;
+
+	initTable(&instance->fields);
+
+	return instance;
+}
+
 ObjNative *newNative(NativeFn function)
 {
 	ObjNative *native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
@@ -252,6 +268,11 @@ void printObject(Value value)
 	}
 	case OBJ_FUNCTION:
 		printFunction(AS_FUNCTION(value));
+		break;
+	case OBJ_INSTANCE:
+		// Note: This is where some dynamic languages might support a `toString()`
+		// convention for various user-defined classes.
+		printf("%s instance", AS_INSTANCE(value)->class->name->chars);
 		break;
 	case OBJ_NATIVE:
 		printf("<native fn>");
