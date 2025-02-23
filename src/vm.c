@@ -739,6 +739,11 @@ static bool callValue(Value callee, int argCount)
 		{
 			ObjBoundMethod *bound = AS_BOUND_METHOD(callee);
 
+			// Writes the receiver Value into the stack's reserved "zero" slot. The
+			// '-1' accounts for the fact that `stackTop` points just _past_ the last
+			// item on the stack.
+			vm.stackTop[-argCount - 1] = bound->receiver;
+
 			// Invokes the closure by pushing a new call frame onto the call stack.
 			return call(bound->method, argCount);
 		}

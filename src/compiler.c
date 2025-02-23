@@ -57,7 +57,8 @@ typedef struct
 typedef enum
 {
 	TYPE_FUNCTION,
-	TYPE_SCRIPT
+	TYPE_METHOD,
+	TYPE_SCRIPT,
 } FunctionType;
 
 typedef struct
@@ -83,9 +84,16 @@ typedef struct
 	Upvalue upvalues[UINT8_COUNT];
 } Compiler;
 
+typedef struct
+{
+	struct ClassCompiler *enclosing;
+} ClassCompiler;
+
 Parser parser;
 
 Compiler *current = NULL;
+
+ClassCompiler *currentClass = NULL;
 
 static Chunk *currentChunk()
 {
@@ -315,14 +323,38 @@ static void initCompiler(Compiler *compiler, FunctionType type)
 	}
 
 	// Reserves this compiler's first slot in `locals[]` for its own internal use.
+
 	Local *local = &current->locals[current->localCount];
 
 	current->localCount += 1;
 
 	local->depth = 0;
 	local->isCaptured = false;
-	local->name.start = ""; // Empty name prevents users from referencing it.
-	local->name.length = 0;
+
+	if (type != TYPE_FUNCTION)
+	{
+		// When invoking a class method, the "zero" slot on the VM's Value stack is
+		// reserved to hold the receiver (instance) that the method was invoked on.
+
+		// When compiling a class method, the corresponding "zero" slot of the
+		// `locals` array holds the lexeme "this", needed to resolve the "this"
+		// token whenever it is encountered while compiling the method body.
+
+		local->name.start = "this";
+		local->name.length = 4;
+	}
+	else
+	{
+		// When invoking a regular function, the "zero" slot on the VM's Value
+		// stack is reserved to hold the compiled ObjFunction value itself.
+
+		// When compiling a regular function, the "zero" slot of the `locals` array
+		// is reserved by writing an empty `name`—thus ensuring the `ObjFunction`
+		// value cannot be directly referenced when compiling the function body.
+
+		local->name.start = ""; // Empty name prevents users from referencing it.
+		local->name.length = 0;
+	}
 }
 
 static ObjFunction *endCompiler()
@@ -925,6 +957,27 @@ static void variable(bool canAssign)
 	namedVariable(parser.previousToken, canAssign);
 }
 
+static void this(bool canAssign)
+{
+	// We'll treat Lox's `this` keyword as a lexically scoped local variable,
+	// whose value is automatically initialized by the time its enclosing function
+	// is invoked. This approach lets us benefit from existing functionality
+	// supporting locals (including closed upvalues and heap migration).
+
+	// Ensures that `this` isn't referenced outside of a class declaration.
+
+	if (currentClass == NULL)
+	{
+		error("Can't use `this` outside of a class.");
+
+		return;
+	}
+
+	// Compiles identifier expressions as variable accesses. We disallow value
+	// assignments to `this` by setting `canAssign` here to `false`.
+	variable(false);
+}
+
 static void unary(bool canAssign)
 {
 	// Assumes that we've already consumed the token for the unary operator,
@@ -996,7 +1049,7 @@ ParseRule rules[] = {
 		[TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
 		[TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
 		[TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
-		[TOKEN_THIS] = {NULL, NULL, PREC_NONE},
+		[TOKEN_THIS] = {this, NULL, PREC_NONE},
 		[TOKEN_TRUE] = {literal, NULL, PREC_NONE},
 		[TOKEN_VAR] = {NULL, NULL, PREC_NONE},
 		[TOKEN_WHILE] = {NULL, NULL, PREC_NONE},
@@ -1175,7 +1228,7 @@ static void method()
 	// Compiles the method's list of parameters and function body; we'll emit code
 	// that will cause the VM to produce an `ObjClosure` on the Value stack.
 
-	FunctionType functionType = TYPE_FUNCTION;
+	FunctionType functionType = TYPE_METHOD;
 
 	function(functionType);
 
@@ -1207,6 +1260,17 @@ static void classDeclaration()
 	// `globals` table, as a resolvable variable.
 	defineVariable(classNameConstantIndex);
 
+	ClassCompiler classCompiler;
+
+	classCompiler.enclosing = (struct ClassCompiler *)currentClass;
+
+	// Note: As `classCompiler` lives on the C stack, its lifetime is tied to the
+	// current `classDeclaration()` call frame; nested class declarations in a Lox
+	// program are mirrored by nested calls to `classDeclaration()`, and so any
+	// chain of `ClassCompilers` forms as a linked list from child calls up
+	// through parent calls.
+	currentClass = &classCompiler;
+
 	// Emit code to place the `ObjClass` onto the Value stack; this ensures that
 	// the `ObjClass` is reachable on the stack when an associated method needs to
 	// be given an entry in the class's `methods` table.
@@ -1231,6 +1295,9 @@ static void classDeclaration()
 	// is still sitting on top of the VM's Value stack.
 
 	emitByte(OP_POP);
+
+	// Pops this class's `ClassCompiler` from the linked list of classes.
+	currentClass = (ClassCompiler *)currentClass->enclosing;
 }
 
 static void variableDeclaration()
