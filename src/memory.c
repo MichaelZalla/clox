@@ -149,6 +149,9 @@ static void blackenObject(Obj *object)
 		// A class holds a reference to a heap-allocated ObjString (`name`).
 		markObject((Obj *)class->name);
 
+		// Traces through the keys (strings) and method values.
+		markTable(&class->methods);
+
 		break;
 	}
 	case OBJ_CLOSURE:
@@ -256,7 +259,9 @@ static void freeObject(Obj *object)
 	{
 	case OBJ_CLASS:
 	{
-		// ObjClass *class = (ObjClass *)object;
+		ObjClass *class = (ObjClass *)object;
+
+		freeTable(&class->methods);
 
 		// Frees the ObjClass, without freeing its name string.
 		FREE(ObjClass, object);

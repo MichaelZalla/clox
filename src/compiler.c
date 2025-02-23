@@ -1164,12 +1164,35 @@ static void function(FunctionType type)
 	}
 }
 
+static void method()
+{
+	consume(TOKEN_IDENTIFIER, "Expect method name.");
+
+	// Stores the method name's lexeme as an entry in the chunk's constants table.
+
+	uint8_t methodNameConstantIndex = identifierConstant(&parser.previousToken);
+
+	// Compiles the method's list of parameters and function body; we'll emit code
+	// that will cause the VM to produce an `ObjClosure` on the Value stack.
+
+	FunctionType functionType = TYPE_FUNCTION;
+
+	function(functionType);
+
+	// Emits code to cause the method (`ObjClosure`) to be moved from the Value
+	// stack into the current class's `methods` table.
+
+	emitBytes(OP_METHOD, methodNameConstantIndex);
+}
+
 static void classDeclaration()
 {
 	consume(TOKEN_IDENTIFIER, "Expect class name.");
 
+	Token className = parser.previousToken;
+
 	// Returns a class name as a new index in the current chunk's constants table.
-	uint8_t classNameConstantIndex = identifierConstant(&parser.previousToken);
+	uint8_t classNameConstantIndex = identifierConstant(&className);
 
 	// Declares the class variable, using the same name (token), before the body.
 	declareVariable();
@@ -1179,10 +1202,35 @@ static void classDeclaration()
 
 	// Marks the class variable as "defined", so that we may refer to it from
 	// within its own class body (useful for class factory methods, for example).
+
+	// This has the effect of moving the ObjClass from the Value stack to the VM's
+	// `globals` table, as a resolvable variable.
 	defineVariable(classNameConstantIndex);
 
+	// Emit code to place the `ObjClass` onto the Value stack; this ensures that
+	// the `ObjClass` is reachable on the stack when an associated method needs to
+	// be given an entry in the class's `methods` table.
+	namedVariable(className, false);
+
+	// In Lox, a class body may only contain methods; fields are declared and
+	// initialized on individual class instances, on a per-instance basis—or they
+	// are declared inside of the class's `init()` method (if defined).
+
 	consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+
+	while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF))
+	{
+		// A Lox class may declare any number of methods.
+
+		method();
+	}
+
 	consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+
+	// Now that all methods have been bound, we can drop the ObjClass value that
+	// is still sitting on top of the VM's Value stack.
+
+	emitByte(OP_POP);
 }
 
 static void variableDeclaration()

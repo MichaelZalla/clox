@@ -79,6 +79,8 @@ ObjClass *newClass(ObjString *name)
 
 	class->name = name;
 
+	initTable(&class->methods);
+
 	return class;
 }
 

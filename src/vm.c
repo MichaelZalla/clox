@@ -26,6 +26,7 @@ static bool call(ObjClosure *closure, int argCount);
 static bool callValue(Value callee, int argCount);
 static ObjUpvalue *captureUpvalue(Value *local);
 static void closeUpvalue(Value *lastLocation);
+static void defineMethod(ObjString *methodName);
 static bool isFalsey(Value value);
 static void concatenate();
 
@@ -634,7 +635,7 @@ static InterpretResult run()
 		}
 		case OP_CLASS:
 		{
-			// Reads the string (value) stored in the current chunk's constant table,
+			// Reads the string (value) stored in the current chunk's constants table,
 			// at the index given by the byte that follows OP_CLASS.
 			ObjString *className = READ_STRING();
 
@@ -642,6 +643,16 @@ static InterpretResult run()
 
 			// Produces a new Value wrapping an ObjClass on the Value stack.
 			push(OBJ_VAL(class));
+
+			break;
+		}
+		case OP_METHOD:
+		{
+			// Reads the string (value) stored in the current chunk's constants table,
+			// at the index given by the byte that follows OP_METHOD.
+			ObjString *methodName = READ_STRING();
+
+			defineMethod(methodName);
 
 			break;
 		}
@@ -814,6 +825,21 @@ static void closeUpvalue(Value *lastLocation)
 		// Removes this no-longer-open upvalue from the `openUpvalues` list.
 		vm.openUpvalues = (ObjUpvalue *)vm.openUpvalues->next;
 	}
+}
+
+static void defineMethod(ObjString *methodName)
+{
+	// Reads the `ObjClosure` value from the top of the Value stack.
+	Value methodClosure = peek(0);
+
+	// Reads the `ObjClass` value near the top of the Value stack.
+	ObjClass *class = AS_CLASS(peek(1));
+
+	// Bind the method (closure) to the class, via its `methods` table.
+	tableSet(&class->methods, methodName, methodClosure);
+
+	// Drop the original `ObjClosure` value from the stack.
+	pop();
 }
 
 static bool isFalsey(Value value)
