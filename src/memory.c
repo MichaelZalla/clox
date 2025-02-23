@@ -113,6 +113,18 @@ static void blackenObject(Obj *object)
 
 	switch (object->type)
 	{
+	case OBJ_BOUND_METHOD:
+	{
+		ObjBoundMethod *bound = (ObjBoundMethod *)object;
+
+		// Marks the value wrapping the bound method's associated `ObjInstance`.
+		markValue(bound->receiver);
+
+		// Marks the bound method's `ObjClosure` via reference.
+		markObject((Obj *)bound->method);
+
+		break;
+	}
 	case OBJ_UPVALUE:
 	{
 		// A closed upvalue holds a reference to its closed-over Value on the heap.
@@ -217,6 +229,11 @@ static void freeObject(Obj *object)
 	printf("%p free type ", (void *)object);
 	switch (object->type)
 	{
+	case OBJ_BOUND_METHOD:
+	{
+		printf("bound method\n");
+		break;
+	}
 	case OBJ_CLASS:
 	{
 		printf("class\n");
@@ -257,6 +274,14 @@ static void freeObject(Obj *object)
 
 	switch (object->type)
 	{
+	case OBJ_BOUND_METHOD:
+	{
+		// The bound method references an `ObjInstance` as well as an `ObjClosure`,
+		// but both of these may be shared, so it isn't safe to free either here.
+		FREE(ObjBoundMethod, object);
+
+		break;
+	}
 	case OBJ_CLASS:
 	{
 		ObjClass *class = (ObjClass *)object;

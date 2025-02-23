@@ -30,6 +30,11 @@ static Obj *allocateObject(size_t size, ObjType type)
 	printf("%p allocate %zu for ", (void *)object, size);
 	switch (type)
 	{
+	case OBJ_BOUND_METHOD:
+	{
+		printf("bound method\n");
+		break;
+	}
 	case OBJ_CLASS:
 	{
 		printf("class\n");
@@ -69,6 +74,16 @@ static Obj *allocateObject(size_t size, ObjType type)
 #endif
 
 	return object;
+}
+
+ObjBoundMethod *newBoundMethod(Value receiver, ObjClosure *method)
+{
+	ObjBoundMethod *bound = ALLOCATE_OBJ(ObjBoundMethod, OBJ_BOUND_METHOD);
+
+	bound->receiver = receiver;
+	bound->method = method;
+
+	return bound;
 }
 
 ObjClass *newClass(ObjString *name)
@@ -253,6 +268,15 @@ void printObject(Value value)
 {
 	switch (OBJ_TYPE(value))
 	{
+	case OBJ_BOUND_METHOD:
+	{
+		// Traverses through pointers to the bound method's `ObjFunction` object.
+		// Note that this represents bound methods externally as if they were normal
+		// functions (i.e., we don't expose the notion of an "ObjBoundMethod").
+		printFunction(AS_BOUND_METHOD(value)->method->function);
+
+		break;
+	}
 	case OBJ_CLASS:
 	{
 		ObjClass *class = AS_CLASS(value);

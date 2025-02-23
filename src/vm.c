@@ -24,6 +24,7 @@ static InterpretResult run();
 static Value peek(int distance);
 static bool call(ObjClosure *closure, int argCount);
 static bool callValue(Value callee, int argCount);
+static bool bindMethod(ObjClass *class, ObjString *propertyName);
 static ObjUpvalue *captureUpvalue(Value *local);
 static void closeUpvalue(Value *lastLocation);
 static void defineMethod(ObjString *methodName);
@@ -378,6 +379,9 @@ static InterpretResult run()
 
 			Value value;
 
+			// Field access takes priority over shadowed method access, so we try to
+			// resolve a referenced field before a referenced class method.
+
 			if (tableGet(&instance->fields, fieldName, &value))
 			{
 				// Replaces the `ObjInstance` value on the stack with the field value.
@@ -386,9 +390,18 @@ static InterpretResult run()
 				break;
 			}
 
-			runtimeError("Undefined property '%s'.", fieldName->chars);
+			// Checks whether this property name refers to a method and not a field.
 
-			return INTERPRET_RUNTIME_ERROR;
+			// If `bindMethod()` is able to resolve a method by name, it will produce
+			// the method (`ObjClosure`) as a Value on the stack; otherwise, it will
+			// report a runtime error.
+
+			if (!bindMethod(instance->class, fieldName))
+			{
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			break;
 		}
 
 		case OP_SET_PROPERTY:
@@ -722,6 +735,13 @@ static bool callValue(Value callee, int argCount)
 	{
 		switch (OBJ_TYPE(callee))
 		{
+		case OBJ_BOUND_METHOD:
+		{
+			ObjBoundMethod *bound = AS_BOUND_METHOD(callee);
+
+			// Invokes the closure by pushing a new call frame onto the call stack.
+			return call(bound->method, argCount);
+		}
 		case OBJ_CLASS:
 		{
 			// Constructor call.
@@ -735,6 +755,7 @@ static bool callValue(Value callee, int argCount)
 			break;
 		}
 		case OBJ_CLOSURE:
+			// Invokes the closure by pushing a new call frame onto the call stack.
 			return call(AS_CLOSURE(callee), argCount);
 		case OBJ_NATIVE:
 		{
@@ -760,6 +781,34 @@ static bool callValue(Value callee, int argCount)
 	runtimeError("Can only call functions and classes.");
 
 	return false;
+}
+
+static bool bindMethod(ObjClass *class, ObjString *propertyName)
+{
+	Value methodClosure;
+
+	// Checks whether this property name refers to a method bound on this class.
+
+	if (!tableGet(&class->methods, propertyName, &methodClosure))
+	{
+		// Otherwise, we report a runtime error.
+
+		runtimeError("Undefined property '%s'.", propertyName->chars);
+	}
+
+	// Grabs the receiver (instance) from the top of the stack.
+	Value receiver = peek(0);
+
+	// Combines the receiver and method references into a bound method object.
+	ObjBoundMethod *bound = newBoundMethod(receiver, AS_CLOSURE(methodClosure));
+
+	// Swap the receiver with the bound method.
+	pop();
+	push(OBJ_VAL(bound));
+
+	// Signals that the property access was a valid method reference.
+
+	return true;
 }
 
 static ObjUpvalue *captureUpvalue(Value *local)
