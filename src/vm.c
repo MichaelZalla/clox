@@ -24,6 +24,8 @@ static InterpretResult run();
 static Value peek(int distance);
 static bool call(ObjClosure *closure, int argCount);
 static bool callValue(Value callee, int argCount);
+static bool invokeFromClass(ObjClass *class, ObjString *methodName, int argCount);
+static bool invoke(ObjString *methodName, int argCount);
 static bool bindMethod(ObjClass *class, ObjString *propertyName);
 static ObjUpvalue *captureUpvalue(Value *local);
 static void closeUpvalue(Value *lastLocation);
@@ -569,6 +571,22 @@ static InterpretResult run()
 			break;
 		}
 
+		case OP_INVOKE:
+		{
+			ObjString *methodName = READ_STRING();
+
+			int argCount = READ_BYTE();
+
+			if (!invoke(methodName, argCount))
+			{
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			frame = &vm.frames[vm.frameCount - 1];
+
+			break;
+		}
+
 		case OP_CLOSURE:
 		{
 			// Reads a constant index from the stack, and uses it to retrieve the
@@ -813,6 +831,53 @@ static bool callValue(Value callee, int argCount)
 	runtimeError("Can only call functions and classes.");
 
 	return false;
+}
+
+static bool invokeFromClass(ObjClass *class, ObjString *methodName, int argCount)
+{
+	Value methodClosure;
+
+	if (!tableGet(&class->methods, methodName, &methodClosure))
+	{
+		runtimeError("Undefined property '%s'.", methodName->chars);
+
+		return false;
+	}
+
+	return call(AS_CLOSURE(methodClosure), argCount);
+}
+
+static bool invoke(ObjString *methodName, int argCount)
+{
+	// Reads the receiver from its position on the stack, below call arguments.
+	Value receiver = peek(argCount);
+
+	// Checks that the receiver Value is in fact an ObjInstance.
+	if (!IS_INSTANCE(receiver))
+	{
+		runtimeError("Only instances have methods.");
+
+		return false;
+	}
+
+	ObjInstance *instance = AS_INSTANCE(receiver);
+
+	// Checks whether the expression we're compiling is actually a call to a field
+	// access (i.e., an instance field that holds a callable value). The call to
+	// `callValue()` will validate that the field is something we can call.
+
+	Value fieldValue;
+
+	if (tableGet(&instance->fields, methodName, &fieldValue))
+	{
+		// Replaces the receiver on the stack with this callable value.
+		vm.stackTop[-argCount - 1] = fieldValue;
+
+		return callValue(fieldValue, argCount);
+	}
+
+	// Attempts to invoke the method by name.
+	return invokeFromClass(instance->class, methodName, argCount);
 }
 
 static bool bindMethod(ObjClass *class, ObjString *propertyName)

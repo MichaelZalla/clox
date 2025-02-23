@@ -824,6 +824,17 @@ static void dot(bool canAssign)
 
 		emitBytes(OP_SET_PROPERTY, fieldNameConstantIndex);
 	}
+	else if (match(TOKEN_LEFT_PAREN))
+	{
+		// Fastpath for an immediate method invocation.
+
+		// Compiles any arguments passed in the call, similar to `call()`.
+		uint8_t argCount = argumentList();
+
+		// Emits a single opcode, with two operands.
+		emitBytes(OP_INVOKE, fieldNameConstantIndex);
+		emitByte(argCount);
+	}
 	else
 	{
 		// A "get" expression reading from the instance's field.

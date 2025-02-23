@@ -17,6 +17,7 @@ void disassembleChunk(Chunk *chunk, const char *name)
 // Forward declarations.
 static int byteInstruction(const char *name, Chunk *chunk, int offset);
 static int jumpInstruction(const char *name, int didJump, Chunk *chunk, int offset);
+static int invokeInstruction(const char *name, Chunk *chunk, int offset);
 
 int disassembleInstruction(Chunk *chunk, int offset)
 {
@@ -93,6 +94,8 @@ int disassembleInstruction(Chunk *chunk, int offset)
 		return jumpInstruction("OP_LOOP", -1, chunk, offset);
 	case OP_CALL:
 		return byteInstruction("OP_CALL", chunk, offset);
+	case OP_INVOKE:
+		return invokeInstruction("OP_INVOKE", chunk, offset);
 	case OP_CLOSURE:
 	{
 		offset += 1;
@@ -177,4 +180,16 @@ int constantInstruction(const char *name, Chunk *chunk, int offset)
 	printf("'\n");
 
 	return offset + 2; // A two-byte instruction (`[OP_*] [constantIndex]`).
+}
+
+int invokeInstruction(const char *name, Chunk *chunk, int offset)
+{
+	uint8_t propertyNameConstantIndex = chunk->code[offset + 1];
+	uint8_t argCount = chunk->code[offset + 2];
+
+	printf("%-16s (%d args) %4d '", name, argCount, propertyNameConstantIndex);
+	printValue(chunk->constants.values[propertyNameConstantIndex]);
+	printf("'\n");
+
+	return offset + 3;
 }
