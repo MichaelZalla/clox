@@ -119,6 +119,11 @@ void initVM()
 	vm.grayStack = NULL;
 
 	initTable(&vm.strings);
+
+	// Zeroes the field before calling into `copyString()`, which may trigger GC.
+	vm.initString = NULL;
+	vm.initString = copyString("init", 4);
+
 	initTable(&vm.globals);
 
 	defineNative("clock", clockNative);
@@ -127,6 +132,9 @@ void initVM()
 void freeVM()
 {
 	freeTable(&vm.strings);
+
+	vm.initString = NULL;
+
 	freeTable(&vm.globals);
 
 	freeObjects();
@@ -755,9 +763,28 @@ static bool callValue(Value callee, int argCount)
 			// For now, we'll ignore any arguments passed to the constructor call.
 			vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(class));
 
-			return true;
+			// Checks for an `init()` method defined on the class.
+			Value initializer;
 
-			break;
+			if (tableGet(&class->methods, vm.initString, &initializer))
+			{
+				// Invokes the `init()` method, which can access the initialized class
+				// instance at `vm.stackTop[-argCount - 1]`. Note: This `init()` call
+				// shares the exact Value stack frame as the class constructor call—
+				// thus, any arguments passed to the class constructor will be available
+				// on the Value stack for the `init()` method to access.
+				return call(AS_CLOSURE(initializer), argCount);
+			}
+			else if (argCount != 0)
+			{
+				// Arguments may only be passed to class constructor calls if the class
+				// has an `init()` method with matching arity.
+				runtimeError("Expected 0 arguments but got %d.", argCount);
+
+				return false;
+			}
+
+			return true;
 		}
 		case OBJ_CLOSURE:
 			// Invokes the closure by pushing a new call frame onto the call stack.

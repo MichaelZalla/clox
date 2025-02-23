@@ -401,6 +401,9 @@ static void markRoots()
 
 	// Marks all objects in memory that were allocated by any compilers.
 	markCompilerRoots();
+
+	// Marks the VM's interned "init" string.
+	markObject((Obj *)vm.initString);
 }
 
 static void traceReferences()

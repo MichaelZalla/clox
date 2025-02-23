@@ -57,6 +57,7 @@ typedef struct
 typedef enum
 {
 	TYPE_FUNCTION,
+	TYPE_INITIALIZER,
 	TYPE_METHOD,
 	TYPE_SCRIPT,
 } FunctionType;
@@ -246,7 +247,17 @@ static int emitJump(uint8_t instruction)
 
 static void emitReturn()
 {
-	emitByte(OP_NIL);
+	if (current->type == TYPE_INITIALIZER)
+	{
+		// A class initializer should implicitly return the class instance.
+		emitBytes(OP_GET_LOCAL, 0);
+	}
+	else
+	{
+		// Otherwise, functions and methods may implicitly return `nil`.
+		emitByte(OP_NIL);
+	}
+
 	emitByte(OP_RETURN);
 }
 
@@ -1230,6 +1241,13 @@ static void method()
 
 	FunctionType functionType = TYPE_METHOD;
 
+	if (
+			parser.previousToken.length == 4 &&
+			memcmp(parser.previousToken.start, "init", 4) == 0)
+	{
+		functionType = TYPE_INITIALIZER;
+	}
+
 	function(functionType);
 
 	// Emits code to cause the method (`ObjClosure`) to be moved from the Value
@@ -1511,6 +1529,14 @@ static void returnStatement()
 		emitReturn();
 
 		return;
+	}
+
+	if (current->type == TYPE_INITIALIZER)
+	{
+		// Reports an error if the user includes a `return` statement in an `init()`
+		// method. We still compile the return expression to keep the compiler
+		// synchronized.
+		error("Can't return a value from an initializer.");
 	}
 
 	// Compiles the expression that follows the `return` token.
