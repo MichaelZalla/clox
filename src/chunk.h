@@ -39,6 +39,7 @@ typedef enum
 	OP_CLOSE_UPVALUE, // Moves a stack-allocated Value to the heap.
 	OP_RETURN,				// Return from the current function.
 	OP_CLASS,					// Begins a new class body.
+	OP_INHERIT,				// Pre-populates a class `methods` table using a superclass.
 	OP_METHOD,				// Begins a method body as part of a class declaration.
 } OpCode;
 

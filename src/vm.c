@@ -685,6 +685,31 @@ static InterpretResult run()
 
 			break;
 		}
+		case OP_INHERIT:
+		{
+			// Reads the inherited superclass (`ObjClass`) value.
+			Value superClass = peek(1);
+
+			// Checks type.
+			if (!IS_CLASS(superClass))
+			{
+				runtimeError("Superclass must be a class!");
+
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			// Reads the inheriting class (`ObjClass`) value.
+			ObjClass *subClass = AS_CLASS(peek(0));
+
+			// Pre-populates the subclass's `methods` table using the method entries
+			// available from the superclass.
+			tableAddAll(&AS_CLASS(superClass)->methods, &subClass->methods);
+
+			// Drops the subclass (`ObjClass`) value, keeping the superclass around.
+			pop();
+
+			break;
+		}
 		case OP_METHOD:
 		{
 			// Reads the string (value) stored in the current chunk's constants table,

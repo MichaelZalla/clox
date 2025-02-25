@@ -1300,6 +1300,28 @@ static void classDeclaration()
 	// through parent calls.
 	currentClass = &classCompiler;
 
+	if (match(TOKEN_LESS))
+	{
+		// Reads the superclass identifier into `previousToken`.
+		consume(TOKEN_IDENTIFIER, "Expect superclass name.");
+
+		// Forbids self-inheritance.
+		if (identifiersEqual(&className, &parser.previousToken))
+		{
+			error("A class can't inherit from itself.");
+		}
+
+		// Produces the superclass (`ObjClass`) on the value stack.
+		variable(false);
+
+		// Produces the class (`ObjClass`) on the value stack.
+		namedVariable(className, false);
+
+		// Populuates this class's `methods` table with all method entries
+		// associated with the superclass.
+		emitByte(OP_INHERIT);
+	}
+
 	// Emit code to place the `ObjClass` onto the Value stack; this ensures that
 	// the `ObjClass` is reachable on the stack when an associated method needs to
 	// be given an entry in the class's `methods` table.
