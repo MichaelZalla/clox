@@ -20,6 +20,7 @@ typedef enum
 	OP_SET_UPVALUE,		// Write to a higher (non-global) lexical scope.
 	OP_GET_PROPERTY,	// Produces a value from an instance's field.
 	OP_SET_PROPERTY,	// Assigns a value to an instance's field.
+	OP_GET_SUPER,			// Calls a given superclass method on a given receiver.
 	OP_EQUAL,					// Comparison.
 	OP_GREATER,				// Comparison.
 	OP_LESS,					// Comparison.
@@ -35,6 +36,7 @@ typedef enum
 	OP_LOOP,					// Unconditional jump backward.
 	OP_CALL,					// Calls into a new frame.
 	OP_INVOKE,				// Fastpath for method invocations on an instance.
+	OP_SUPER_INVOKE,	// Fastpath for super-method invocations on an instance.
 	OP_CLOSURE,				// Similar to OP_CONSTANT but with special runtime handling.
 	OP_CLOSE_UPVALUE, // Moves a stack-allocated Value to the heap.
 	OP_RETURN,				// Return from the current function.

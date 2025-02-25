@@ -990,6 +990,67 @@ static Token syntheticToken(const char *text)
 	return token;
 }
 
+static void super(bool canAssign)
+{
+	if (currentClass == NULL)
+	{
+		error("Can't use 'super' outside of a class.");
+	}
+	else if (!currentClass->hasSuperClass)
+	{
+		error("Can't use 'super' in a class with no superclass.");
+	}
+
+	// In Lox, "super" isn't a standalone expression, meaning it isn't a first-
+	// class value. Any reference to "super" _most_ be followed by a dot, and then
+	// a method name. The total sequence of tokens, though, _is_ an expression—
+	// one that should produce an `ObjClosure` on the value stack.
+
+	// In a sense, Lox supports method _access_ through "super"; by the time the
+	// method is resolved, its call semantics are no different from any other
+	// closure call in Lox.
+
+	consume(TOKEN_DOT, "Expect '.' after 'super'.");
+	consume(TOKEN_IDENTIFIER, "Expect superclass method name.");
+
+	// Methods are looked up dynamically, so we use `identifierConstant()` to take
+	// the lexeme of the method name (token) and store it in the constants table
+	// (just as with property access expressions).
+
+	uint8_t superMethodNameConstantIndex = identifierConstant(&parser.previousToken);
+
+	// Pushes the current receiver (`ObjInstance`) onto the value stack.
+	namedVariable(syntheticToken("this"), false);
+
+	if (match(TOKEN_LEFT_PAREN))
+	{
+		// Fast path, used to invoke a (bound) method from the superclass.
+
+		// Compiles call arguments; since the fast path involves resolving the
+		// superclass method as part of the method's _invocation_, we end up
+		// producing the superclass on the value stack _after_ the call arguments
+		// are pushed. This is different from the slow path.
+		uint8_t argCount = argumentList();
+
+		// Pushes the inherited superclass (`ObjClass`) onto the value stack.
+		namedVariable(syntheticToken("super"), false);
+
+		emitBytes(OP_SUPER_INVOKE, superMethodNameConstantIndex);
+		emitByte(argCount);
+	}
+	else
+	{
+		// Slow path, used to produce a (bound) method from the superclass.
+
+		// Pushes the inherited superclass (`ObjClass`) onto the value stack.
+		namedVariable(syntheticToken("super"), false);
+
+		// Uses the receiver, superclass, and method name, together, to invoke a
+		// superclass method bound to the given receiver.
+		emitBytes(OP_GET_SUPER, superMethodNameConstantIndex);
+	}
+}
+
 static void this(bool canAssign)
 {
 	// We'll treat Lox's `this` keyword as a lexically scoped local variable,
@@ -1081,7 +1142,7 @@ ParseRule rules[] = {
 		[TOKEN_OR] = {NULL, or_, PREC_OR},
 		[TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
 		[TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
-		[TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
+		[TOKEN_SUPER] = {super, NULL, PREC_NONE},
 		[TOKEN_THIS] = {this, NULL, PREC_NONE},
 		[TOKEN_TRUE] = {literal, NULL, PREC_NONE},
 		[TOKEN_VAR] = {NULL, NULL, PREC_NONE},

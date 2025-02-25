@@ -440,6 +440,31 @@ static InterpretResult run()
 			break;
 		}
 
+		case OP_GET_SUPER:
+		{
+			// Reads the opcode argument to resolve the name of the superclass method.
+			ObjString *superMethodName = READ_STRING();
+
+			// Pops the superclass (`ObjClass`) off the value stack.
+			ObjClass *superClass = AS_CLASS(pop());
+
+			// The receiver (instance) still present on the stack will be read as part
+			// of the `bindMethod()` call, and then replaced on the value stack with a
+			// new `ObjBoundMethod` object.
+
+			// Attempts to invoke the named method, found through the superclass,
+			// using the receiver present on the value stack. Because we pass the
+			// superclass and not the class itself, this call will fail if the named
+			// method is declared on the subclass and not the superclass; however, it
+			// succeeds if the method is declared on a superclass _of the superclass_.
+			if (!bindMethod(superClass, superMethodName))
+			{
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			break;
+		}
+
 		case OP_EQUAL:
 		{
 			Value b = pop();
@@ -573,8 +598,8 @@ static InterpretResult run()
 
 		case OP_INVOKE:
 		{
+			// Reads opcode arguments.
 			ObjString *methodName = READ_STRING();
-
 			int argCount = READ_BYTE();
 
 			if (!invoke(methodName, argCount))
@@ -582,6 +607,28 @@ static InterpretResult run()
 				return INTERPRET_RUNTIME_ERROR;
 			}
 
+			// Advances the cached `frame` pointer to the newly pushed call frame.
+			frame = &vm.frames[vm.frameCount - 1];
+
+			break;
+		}
+
+		case OP_SUPER_INVOKE:
+		{
+			// Reads opcode arguments.
+			ObjString *superMethodName = READ_STRING();
+			int argCount = READ_BYTE();
+
+			// Pops the superclass (`ObjClass`) off the value stack.
+			ObjClass *superClass = AS_CLASS(pop());
+
+			// Attempts the call the named method on the superclass.
+			if (!invokeFromClass(superClass, superMethodName, argCount))
+			{
+				return INTERPRET_RUNTIME_ERROR;
+			}
+
+			// Advances the cached `frame` pointer to the newly pushed call frame.
 			frame = &vm.frames[vm.frameCount - 1];
 
 			break;
