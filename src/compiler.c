@@ -88,6 +88,7 @@ typedef struct
 typedef struct
 {
 	struct ClassCompiler *enclosing;
+	bool hasSuperClass;
 } ClassCompiler;
 
 Parser parser;
@@ -979,6 +980,16 @@ static void variable(bool canAssign)
 	namedVariable(parser.previousToken, canAssign);
 }
 
+static Token syntheticToken(const char *text)
+{
+	Token token;
+
+	token.start = text;
+	token.length = (int)strlen(text);
+
+	return token;
+}
+
 static void this(bool canAssign)
 {
 	// We'll treat Lox's `this` keyword as a lexically scoped local variable,
@@ -1291,6 +1302,8 @@ static void classDeclaration()
 
 	ClassCompiler classCompiler;
 
+	classCompiler.hasSuperClass = false;
+
 	classCompiler.enclosing = (struct ClassCompiler *)currentClass;
 
 	// Note: As `classCompiler` lives on the C stack, its lifetime is tied to the
@@ -1314,12 +1327,25 @@ static void classDeclaration()
 		// Produces the superclass (`ObjClass`) on the value stack.
 		variable(false);
 
+		// Defines a new (reserved) local, `"super"`, inside of a new inner
+		// (subclass) scope; doing so ensures that two subclasses declared inside a
+		// given scope don't contend over the same `"super"` variable.
+		beginScope();
+		addLocal(syntheticToken("super"));
+
+		// Marks the local `"super"` variable as initialized by setting its depth.
+		defineVariable(0);
+
 		// Produces the class (`ObjClass`) on the value stack.
 		namedVariable(className, false);
 
 		// Populuates this class's `methods` table with all method entries
 		// associated with the superclass.
 		emitByte(OP_INHERIT);
+
+		// Provides a signal to the compiler to end (close) the scope created for
+		// the reserved `"super"` local.
+		classCompiler.hasSuperClass = true;
 	}
 
 	// Emit code to place the `ObjClass` onto the Value stack; this ensures that
@@ -1346,6 +1372,13 @@ static void classDeclaration()
 	// is still sitting on top of the VM's Value stack.
 
 	emitByte(OP_POP);
+
+	// If inheriting from a superclass, close the scope that was opened and
+	// associated with the reserved local `"super"`.
+	if (classCompiler.hasSuperClass)
+	{
+		endScope();
+	}
 
 	// Pops this class's `ClassCompiler` from the linked list of classes.
 	currentClass = (ClassCompiler *)currentClass->enclosing;
