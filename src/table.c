@@ -24,7 +24,7 @@ void freeTable(Table *table)
 
 static Entry *findEntry(Entry *entries, int capacity, ObjString *key)
 {
-	uint32_t index = key->hash % capacity;
+	uint32_t index = key->hash & (capacity - 1);
 
 	Entry *tombstone = NULL;
 
@@ -38,14 +38,19 @@ static Entry *findEntry(Entry *entries, int capacity, ObjString *key)
 
 		if (entry->key == NULL)
 		{
+			// If we encounter a completely empty entry, and we haven't returned yet,
+			// then we know that `key` is not present in the hash table.
 			if (IS_NIL(entry->value))
 			{
-				// Encountered an empty entry.
+				// Now that we know that `key` is not present, we can return (reuse) the
+				// tombstone entry, if one was found; otherwise, we return (use) this
+				// entry.
 				return tombstone != NULL ? tombstone : entry;
 			}
 			else
 			{
-				// Encountered a tombstone.
+				// Encountered a tombstone; remember this entry in case we determine
+				// later that we can re-use it.
 				if (tombstone == NULL)
 				{
 					tombstone = entry;
@@ -60,7 +65,7 @@ static Entry *findEntry(Entry *entries, int capacity, ObjString *key)
 		}
 
 		// Resolves collision with linear probing.
-		index = (index + 1) % capacity;
+		index = (index + 1) & (capacity - 1);
 	}
 }
 
@@ -198,7 +203,7 @@ ObjString *tableFindString(Table *table, const char *chars, int length, uint32_t
 		return NULL;
 	}
 
-	uint32_t index = hash % table->capacity;
+	uint32_t index = hash & (table->capacity - 1);
 
 	for (;;)
 	{
@@ -219,7 +224,7 @@ ObjString *tableFindString(Table *table, const char *chars, int length, uint32_t
 			}
 		}
 
-		index = (index + 1) % table->capacity;
+		index = (index + 1) & (table->capacity - 1);
 	}
 }
 
